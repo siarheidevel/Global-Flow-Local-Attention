@@ -8,7 +8,57 @@ import re
 import argparse
 from natsort import natsorted
 
+def net_parameters(net):
+    return sum([p.numel() for p in net.parameters()])
 
+def bilinear_warp(img, flow):
+    """https://stackoverflow.com/questions/63119381/pytorch-gridsample-different-resolutions"""
+    import torch.nn.functional as F
+    import torch
+    # B, C, H, W = img.size()
+    # #interpolate if size flow != img
+    # if flow.shape[2]!= H or flow.shape[3]!= W:
+    #     flow = torch.nn.functional.interpolate(flow, (H,W))
+
+    # # mesh grid
+    # grid_x = torch.arange(W, device=img.device)
+    # grid_y = torch.arange(H, device=img.device)
+    # yy, xx = torch.meshgrid(grid_y, grid_x)
+    # grid = torch.cat((xx.unsqueeze(0), yy.unsqueeze(0)), dim=0)
+
+    # vgrid = grid + flow.clamp(min=-1000., max=1000.)
+
+    # # scale grid to [-1,1]
+    # vgrid[:, 0, :, :] = 2.0 * vgrid[:, 0, :, :].clone() / max(W - 1, 1) - 1.0
+    # vgrid[:, 1, :, :] = 2.0 * vgrid[:, 1, :, :].clone() / max(H - 1, 1) - 1.0
+    
+    # # b,c,h,w -> b,h,w,c
+    # vgrid = vgrid.permute(0, 2, 3, 1)
+    # warped_img = F.grid_sample(img, vgrid, align_corners=False)
+    # return warped_img
+
+    # if flow.shape[2] < img.shape[2] and flow.shape[3] < img.shape[3]:
+    #     flow = torch.nn.functional.interpolate(flow, (img.shape[2],img.shape[3]))
+    # elif flow.shape[2] > img.shape[2] and flow.shape[3] > img.shape[3]:
+    #     img = F.interpolate(img, (flow.shape[2],flow.shape[3]))
+
+    [b,_,h,w] = flow.size()
+    if h!=img.shape[2] or w!=img.shape[3]:
+        img = F.interpolate(img,(flow.shape[2],flow.shape[3]))
+    x = torch.arange(w).view(1, -1).expand(h, -1).float()
+    y = torch.arange(h).view(-1, 1).expand(-1, w).float()
+    x = 2*x/(w-1)-1
+    y = 2*y/(h-1)-1
+    grid = torch.stack([x,y], dim=0).float().cuda()
+    grid = grid.unsqueeze(0).expand(b, -1, -1, -1)
+    flow_x = (2*flow[:,0,:,:]/(w-1)).view(b,1,h,w)
+    flow_y = (2*flow[:,1,:,:]/(h-1)).view(b,1,h,w)
+    flow = torch.cat((flow_x,flow_y), 1)
+
+    grid = (grid+flow).permute(0, 2, 3, 1)
+    warp = torch.nn.functional.grid_sample(img, grid)
+    return  warp
+    
 
 # convert a tensor into a numpy array
 def tensor2im(image_tensor, bytes=255.0, imtype=np.uint8):
@@ -280,7 +330,13 @@ class StoreDictKeyPair(argparse.Action):
 class StoreList(argparse.Action):
      def __call__(self, parser, namespace, values, option_string=None):
         my_list = [int(item) for item in values.split(',')]
-        setattr(namespace, self.dest, my_list)   
+        setattr(namespace, self.dest, my_list)
+
+class StoreFloatList(argparse.Action):
+     def __call__(self, parser, namespace, values, option_string=None):
+        my_list = [float(item) for item in values.split(',')]
+        setattr(namespace, self.dest, my_list)  
+
 #           
 def get_iteration(dir_name, file_name, net_name):
     if os.path.exists(os.path.join(dir_name, file_name)) is False:

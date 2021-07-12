@@ -12,7 +12,7 @@ import torch
 import math
 import numbers
 
-class BaseDataset(data.Dataset):
+class BaseDataset():
     def __init__(self):
         super(BaseDataset, self).__init__()
 

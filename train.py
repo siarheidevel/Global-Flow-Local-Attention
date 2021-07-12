@@ -12,6 +12,10 @@ if __name__ == '__main__':
     dataset = Dataset.create_dataloader(opt)
     dataset_size = len(dataset) * opt.batchSize
     print('training images = %d' % dataset_size)
+
+    # for i, data in enumerate(dataset):
+    #     print(i)
+
     # create a model
     model = create_model(opt)
     # model = model.to()  
@@ -22,7 +26,7 @@ if __name__ == '__main__':
     max_iteration = opt.niter+opt.niter_decay
     epoch = 0
     total_iteration = opt.iter_count
-
+    # total_iteration = -1
     # training process
     while(keep_training):
         epoch_start_time = time.time()
@@ -34,7 +38,8 @@ if __name__ == '__main__':
             total_iteration += 1
             model.set_input(data)
             model.optimize_parameters()
-
+            # visualizer.display_current_results(model.get_current_visuals(), epoch)
+            # visualizer.display_current_results(model.get_current_visuals(), epoch)
             # display images on visdom and save images
             if total_iteration % opt.display_freq == 0:
                 visualizer.display_current_results(model.get_current_visuals(), epoch)

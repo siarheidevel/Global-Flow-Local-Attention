@@ -8,6 +8,7 @@ def find_model_using_name(model_name):
     """Import the module "model/[model_name]_model.py"."""
     model_file_name = "model." + model_name + "_model"
     modellib = importlib.import_module(model_file_name)
+    # import pose_model
     model = None
     for name, cls in modellib.__dict__.items():
         if name.lower() == model_name.lower() and issubclass(cls, BaseModel):

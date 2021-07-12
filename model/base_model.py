@@ -103,7 +103,15 @@ class BaseModel():
     def convert2im(self, value, name):
         if 'label' in name:
             convert = getattr(self, 'label2color')
-            value = convert(value)
+            value = convert(value)[...,np.newaxis]
+        
+        if 'input_M1'==name:
+            result=value[0].detach().cpu().numpy()*255
+            return result.astype(np.uint8)[...,np.newaxis]
+        
+        if 'soft_mask_list'==name:
+            result=np.transpose(torch.cat((value[0],value[1]),-1)[0].detach().cpu().numpy()*255,(1,2,0))
+            return result.astype(np.uint8)
 
         if 'flow' in name: # flow_field
             convert = getattr(self, 'flow2color')
@@ -122,6 +130,12 @@ class BaseModel():
         elif value.size(1) == 16 and 'flow' not in name: # face map
             value = np.transpose(value[0,0,...].unsqueeze(0).detach().cpu().numpy(),(1,2,0))
             result = (value*255).astype(np.uint8)
+        
+        elif value.size(1) == 10: # seg_map one-hot to
+            value = np.transpose(value[0].detach().cpu().numpy(),(1,2,0))
+            value = np.argmax(value,axis=2)
+            value = (value*20).astype(np.uint8)
+            result = value.astype(np.uint8)[...,np.newaxis]
 
         else:
             result = util.tensor2im(value.data)

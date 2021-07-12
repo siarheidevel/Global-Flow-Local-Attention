@@ -100,10 +100,10 @@ class Pose(BaseModel):
         input_P2, input_BP2 = input['P2'], input['BP2']
 
         if len(self.gpu_ids) > 0:
-            self.input_P1 = input_P1.cuda(self.gpu_ids[0], async=True)
-            self.input_BP1 = input_BP1.cuda(self.gpu_ids[0], async=True)
-            self.input_P2 = input_P2.cuda(self.gpu_ids[0], async=True)
-            self.input_BP2 = input_BP2.cuda(self.gpu_ids[0], async=True)        
+            self.input_P1 = input_P1.cuda(self.gpu_ids[0], non_blocking=True)
+            self.input_BP1 = input_BP1.cuda(self.gpu_ids[0], non_blocking=True)
+            self.input_P2 = input_P2.cuda(self.gpu_ids[0], non_blocking=True)
+            self.input_BP2 = input_BP2.cuda(self.gpu_ids[0], non_blocking=True)        
 
         self.image_paths=[]
         for i in range(self.input_P1.size(0)):
@@ -114,6 +114,8 @@ class Pose(BaseModel):
         """Forward function used in test time"""
         img_gen, flow_fields, masks = self.net_G(self.input_P1, self.input_BP1, self.input_BP2)
         self.save_results(img_gen, data_name='vis')
+        result = torch.cat([self.input_P1, img_gen, self.input_P2], 3)
+        self.save_results(result, data_name='all')
         if self.opt.save_input or self.opt.phase == 'val':
             self.save_results(self.input_P1, data_name='ref')
             self.save_results(self.input_P2, data_name='gt')

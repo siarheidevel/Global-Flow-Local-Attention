@@ -115,7 +115,8 @@ class SPADE(nn.Module):
         normalized = self.param_free_norm(x)
 
         # Part 2. produce scaling and bias conditioned on semantic map
-        segfeature = F.interpolate(segfeature, size=x.size()[2:], mode='nearest')
+        if segfeature.shape[2:]!= x.shape[2:]:
+            segfeature = F.interpolate(segfeature, size=x.size()[2:], mode='nearest')
         actv = self.mlp_shared(segfeature)
         gamma = self.mlp_gamma(actv)
         beta = self.mlp_beta(actv)
@@ -173,15 +174,17 @@ class ADAIN(nn.Module):
 
 
 def get_norm_layer(norm_type='batch'):
-    """Get the normalization layer for the networks"""
+    """Get the normalization layer for the networks (batch,instance,adain,spade,none)"""
     if norm_type == 'batch':
         norm_layer = functools.partial(nn.BatchNorm2d, momentum=0.1, affine=True)
     elif norm_type == 'instance':
         norm_layer = functools.partial(nn.InstanceNorm2d, affine=True)
+    elif norm_type == 'layer':
+        norm_layer = functools.partial(LayerNorm, affine =True)
     elif norm_type == 'adain':
         norm_layer = functools.partial(ADAIN)
     elif norm_type == 'spade':
-        norm_layer = functools.partial(SPADE, config_text='spadeinstance3x3')        
+        norm_layer = functools.partial(SPADE, config_text='spadeinstance3x3')
     elif norm_type == 'none':
         norm_layer = None
     else:
@@ -192,13 +195,14 @@ def get_norm_layer(norm_type='batch'):
 
     return norm_layer
 
-
 def get_nonlinearity_layer(activation_type='PReLU'):
-    """Get the activation layer for the networks"""
+    """Get the activation layer for the networks (ReLU,SELU,LeakyReLU,PReLU)"""
     if activation_type == 'ReLU':
         nonlinearity_layer = nn.ReLU()
     elif activation_type == 'SELU':
         nonlinearity_layer = nn.SELU()
+    elif activation_type == 'tanh':
+        nonlinearity_layer = nn.Tanh()
     elif activation_type == 'LeakyReLU':
         nonlinearity_layer = nn.LeakyReLU(0.1)
     elif activation_type == 'PReLU':
@@ -206,6 +210,19 @@ def get_nonlinearity_layer(activation_type='PReLU'):
     else:
         raise NotImplementedError('activation layer [%s] is not found' % activation_type)
     return nonlinearity_layer
+
+
+def get_padding(pad_type='', padding=0):
+    """get padding for conv layers (reflect,replicate,zero)"""
+    if pad_type == 'reflect':
+        pad = functools.partial(nn.ReflectionPad2d, padding=padding)
+    elif pad_type == 'replicate':
+        pad = functools.partial(nn.ReplicationPad2d, padding=padding)
+    elif pad_type == 'zero':
+        pad = functools.partial(nn.ZeroPad2d, padding)
+    else:
+        raise NotImplementedError('Unsupported padding type {}'.format(pad_type))
+    return pad
 
 
 def get_scheduler(optimizer, opt):
@@ -494,7 +511,7 @@ class BilinearSamplingBlock(nn.Module):
 
     def forward(self, source, flow_field):
         [b,_,h,w] = source.size()
-        # flow_field = torch.nn.functional.interpolate(flow_field, (w,h))
+        
         x = torch.arange(w).view(1, -1).expand(h, -1)
         y = torch.arange(h).view(-1, 1).expand(-1, w)
         grid = torch.stack([x,y], dim=0).float().cuda()
@@ -904,7 +921,37 @@ class LayerNorm1d(nn.Module):
         if self.affine:
           return F.layer_norm(x, normalized_shape, self.weight.expand(normalized_shape), self.bias.expand(normalized_shape))
         else:
-          return F.layer_norm(x, normalized_shape)  
+          return F.layer_norm(x, normalized_shape) 
+
+
+class LayerNorm(nn.Module):
+    def __init__(self, num_features, eps=1e-5, affine=True):
+        super(LayerNorm, self).__init__()
+        self.num_features = num_features
+        self.affine = affine
+        self.eps = eps
+
+        if self.affine:
+            self.gamma = nn.Parameter(torch.Tensor(num_features).uniform_())
+            self.beta = nn.Parameter(torch.zeros(num_features))
+
+    def forward(self, x):
+        shape = [-1] + [1] * (x.dim() - 1)
+        # print(x.size())
+        if x.size(0) == 1:
+            # These two lines run much faster in pytorch 0.4 than the two lines listed below.
+            mean = x.view(-1).mean().view(*shape)
+            std = x.view(-1).std().view(*shape)
+        else:
+            mean = x.view(x.size(0), -1).mean(1).view(*shape)
+            std = x.view(x.size(0), -1).std(1).view(*shape)
+
+        x = (x - mean) / (std + self.eps)
+
+        if self.affine:
+            shape = [1, -1] + [1] * (x.dim() - 2)
+            x = x * self.gamma.view(*shape) + self.beta.view(*shape)
+        return x
 
 
 class ADALN1d(nn.Module):

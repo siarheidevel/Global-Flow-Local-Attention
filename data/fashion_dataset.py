@@ -39,9 +39,10 @@ class FashionDataset(BaseDataset):
         size = len(pairs_file_train)
         pairs = []
         print('Loading data pairs ...')
-        for i in range(size):
-            pair = [pairs_file_train.iloc[i]['from'], pairs_file_train.iloc[i]['to']]
-            pairs.append(pair)
+        # for i in range(size):
+        #     pair = [pairs_file_train.iloc[i]['from'], pairs_file_train.iloc[i]['to']]
+        #     pairs.append(pair)
+        pairs = [tuple(x) for x in pairs_file_train[['from','to']].to_numpy()]
 
         print('Loading data pairs finished ...')  
         return pairs    

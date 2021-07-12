@@ -68,7 +68,10 @@ class PatchDiscriminator(BaseNetwork):
         nonlinearity = get_nonlinearity_layer(activation_type=activation)
 
         kwargs = {'kernel_size': 4, 'stride': 2, 'padding': 1, 'bias': False}
-        sequence = [
+        sequence = []
+        if norm_layer is not None:
+            sequence +=[norm_layer(input_nc)]
+        sequence += [
             coord_conv(input_nc, ndf, use_spect, use_coord, **kwargs),
             nonlinearity,
         ]
@@ -77,6 +80,8 @@ class PatchDiscriminator(BaseNetwork):
         for i in range(1, layers):
             mult_prev = mult
             mult = min(2 ** i, img_f // ndf)
+            if norm_layer is not None:
+                sequence +=[norm_layer(ndf * mult_prev)]
             sequence +=[
                 coord_conv(ndf * mult_prev, ndf * mult, use_spect, use_coord, **kwargs),
                 nonlinearity,
@@ -85,6 +90,8 @@ class PatchDiscriminator(BaseNetwork):
         mult_prev = mult
         mult = min(2 ** i, img_f // ndf)
         kwargs = {'kernel_size': 4, 'stride': 1, 'padding': 1, 'bias': False}
+        if norm_layer is not None:
+            sequence +=[norm_layer(ndf * mult_prev)]
         sequence += [
             coord_conv(ndf * mult_prev, ndf * mult, use_spect, use_coord, **kwargs),
             nonlinearity,
