@@ -44,7 +44,7 @@ if __name__ == '__main__':
             if total_iteration % opt.display_freq == 0:
                 visualizer.display_current_results(model.get_current_visuals(), epoch)
                 if hasattr(model, 'distribution'):
-                    visualizer.plot_current_distribution(model.get_current_dis()) 
+                    visualizer.plot_current_distribution(model.get_current_dis())
 
             # print training loss and save logging information to the disk
             if total_iteration % opt.print_freq == 0:
