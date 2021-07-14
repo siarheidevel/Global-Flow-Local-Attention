@@ -1,0 +1,76 @@
+#initial
+conda activate deep
+cd ~/devel/Global-Flow-Local-Attention
+
+#start viewer html port 8097
+nohup python -m visdom.server & echo $! > visdom_.pid
+
+
+# pretrain dior_flow
+python train.py  --name=dior_flow --model=dior_flow  \
+                 --kernel_size=2=5,3=3  --attn_layer=2,3  \
+                 --dataset_mode=dior --dataroot=/home/deeplab/datasets/deepfashion/diordataset256_176  \
+                 --gpu_id=1  --nThreads=2 --display_port=8097 --batchSize=16  \
+                 --inpaint_percentage=0  \
+                 --scale=0.8,1.2 --shift=-0.1,0.1 --angle=-20,20  \
+                 --display_freq=100    --print_freq=100  \
+                 --continue_train
+
+# pretrain decoderencoder-inpainting
+nohup python train.py  --name=dior_encoderdecoder2 --model=dior_encoderdecoder \
+                 --dataset_mode=dior --dataroot=/home/deeplab/datasets/deepfashion/diordataset256_176 \
+                 --gpu_id=1 --nThreads=2 --display_port=8097 --batchSize=8 \
+                 --inpaint_percentage=1 \
+                 --scale=0.8,1.2 --shift=-0.1,0.1 --angle=-20,20 --flip=1 \
+                 --display_freq=100 --print_freq=100 \
+                 --continue_train
+
+# train dior all
+python train.py --name=dior --model=dior \
+                --kernel_size=2=5,3=3 --attn_layer=2,3 \
+                --dataset_mode=dior --dataroot=/home/deeplab/datasets/deepfashion/diordataset256_176 \
+                --gpu_id=0 --nThreads=3 --display_port=8097 --batchSize=3 \
+                --inpaint_percentage=0.35\
+                --scale=0.8,1.2 --shift=-0.2,0.2 --angle=-20,20 \
+                --display_freq=100 --print_freq=100 \
+                --with_D_PB=1 --with_D_PP=1 --with_D_PS=1 \
+                --continue_train
+
+& echo $! > dior_.pid
+
+
+
+# pretrain dior_flow
+nohup python train.py  --name=dior_flow2 --model=dior_flow  \
+                 --kernel_size=2=5,3=3  --attn_layer=2,3  \
+                 --dataset_mode=dior --dataroot=/home/deeplab/datasets/deepfashion/diordataset256_176  \
+                 --gpu_id=1  --nThreads=4 --display_port=8097 --batchSize=8  \
+                 --inpaint_percentage=0.3  \
+                 --scale=1,1.2 \
+                 --display_freq=100    --print_freq=100  \
+                 --continue_train & echo $! > _dior_flow2.pid
+
+
+# pretrain decoderencoder-inpainting
+nohup python train.py  --name=dior_encoderdecoder2 --model=dior_encoderdecoder \
+                 --dataset_mode=dior --dataroot=/home/deeplab/datasets/deepfashion/diordataset256_176 \
+                 --gpu_id=1 --nThreads=4 --display_port=8097 --batchSize=8 \
+                 --inpaint_percentage=1 \
+                 --scale=1,1.3 --flip=1 \
+                 --display_freq=100 --print_freq=100 \
+                 --continue_train & echo $! > _dior_encoderdecoder2.pid
+
+# train dior all
+nohup python train.py --name=dior3_freeze --model=dior \
+                --kernel_size=2=5,3=3 --attn_layer=2,3 \
+                --dataset_mode=dior --dataroot=/home/deeplab/datasets/deepfashion/diordataset256_176 \
+                --gpu_id=0 --nThreads=3 --display_port=8097 --batchSize=7 \
+                --inpaint_percentage=0.5 \
+                --scale=1,1.1 \
+                --display_freq=100 --print_freq=100 \
+                --with_D_PB=1 --with_D_PP=1 --with_D_PS=1 \
+                --style_dim=128 --style_blocks=1 \
+                --continue_train & echo $! > dior_.pid
+
+nohup python train.py --name dior_3 --model dior --kernel_size 2=5,3=3 --attn_layer " 2,3" --gpu_id 0 --dataset_mode dior --dataroot /home/deeplab/datasets/deepfashion/diordataset256_176 --nThreads 3 --display_port 8097 --batchSize 6 --inpaint_percentage 0.7 --display_freq 100 --print_freq 100 --continue_train --lr 0.00001 --style_blocks 1 --style_dim 128 --with_D_PB 1 --with_D_PP 1 --with_D_PS 1  & echo $! > dior_.pid
+nohup python train.py --name dior_multi1 --model dior --kernel_size 1=5,2=5,3=3 --attn_layer 1,2,3 --gpu_id 0 --dataset_mode dior --dataroot /home/deeplab/datasets/deepfashion/diordataset256_176 --nThreads 2 --display_port 8097 --batchSize 3 --inpaint_percentage 0.5 --display_freq 100 --print_freq 100 --continue_train --style_blocks 1 --style_dim 128 --with_D_PB 1 --with_D_PP 1 --with_D_PS 1 & echo $! > dior_.pid

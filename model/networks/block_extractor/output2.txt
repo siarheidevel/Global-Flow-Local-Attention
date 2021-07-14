@@ -1,0 +1,57 @@
+running clean
+removing 'build/temp.linux-x86_64-3.8' (and everything under it)
+removing 'build'
+running install
+running bdist_egg
+running egg_info
+writing block_extractor_cuda.egg-info/PKG-INFO
+writing dependency_links to block_extractor_cuda.egg-info/dependency_links.txt
+writing top-level names to block_extractor_cuda.egg-info/top_level.txt
+reading manifest file 'block_extractor_cuda.egg-info/SOURCES.txt'
+writing manifest file 'block_extractor_cuda.egg-info/SOURCES.txt'
+installing library code to build/bdist.linux-x86_64/egg
+running install_lib
+running build_ext
+building 'block_extractor_cuda' extension
+creating /home/deeplab/devel/Global-Flow-Local-Attention/model/networks/block_extractor/build
+creating /home/deeplab/devel/Global-Flow-Local-Attention/model/networks/block_extractor/build/temp.linux-x86_64-3.8
+Emitting ninja build file /home/deeplab/devel/Global-Flow-Local-Attention/model/networks/block_extractor/build/temp.linux-x86_64-3.8/build.ninja...
+Compiling objects...
+Allowing ninja to set a default number of workers... (overridable by setting the environment variable MAX_JOBS=N)
+[1/2] /usr/bin/nvcc --generate-dependencies-with-compile --dependency-output /home/deeplab/devel/Global-Flow-Local-Attention/model/networks/block_extractor/build/temp.linux-x86_64-3.8/block_extractor_kernel.o.d -I/home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include -I/home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include/torch/csrc/api/include -I/home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include/TH -I/home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include/THC -I/home/deeplab/miniconda3/envs/deep/include/python3.8 -c -c /home/deeplab/devel/Global-Flow-Local-Attention/model/networks/block_extractor/block_extractor_kernel.cu -o /home/deeplab/devel/Global-Flow-Local-Attention/model/networks/block_extractor/build/temp.linux-x86_64-3.8/block_extractor_kernel.o -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options ''"'"'-fPIC'"'"'' -gencode arch=compute_60,code=sm_60 -gencode arch=compute_61,code=sm_61 -gencode arch=compute_70,code=sm_70 -gencode arch=compute_70,code=compute_70 -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1011"' -DTORCH_EXTENSION_NAME=block_extractor_cuda -D_GLIBCXX_USE_CXX11_ABI=0 -std=c++14
+[2/2] c++ -MMD -MF /home/deeplab/devel/Global-Flow-Local-Attention/model/networks/block_extractor/build/temp.linux-x86_64-3.8/block_extractor_cuda.o.d -pthread -B /home/deeplab/miniconda3/envs/deep/compiler_compat -Wl,--sysroot=/ -Wsign-compare -DNDEBUG -g -fwrapv -O3 -Wall -Wstrict-prototypes -fPIC -I/home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include -I/home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include/torch/csrc/api/include -I/home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include/TH -I/home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include/THC -I/home/deeplab/miniconda3/envs/deep/include/python3.8 -c -c /home/deeplab/devel/Global-Flow-Local-Attention/model/networks/block_extractor/block_extractor_cuda.cc -o /home/deeplab/devel/Global-Flow-Local-Attention/model/networks/block_extractor/build/temp.linux-x86_64-3.8/block_extractor_cuda.o -std=c++14 -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1011"' -DTORCH_EXTENSION_NAME=block_extractor_cuda -D_GLIBCXX_USE_CXX11_ABI=0
+cc1plus: warning: command-line option ‘-Wstrict-prototypes’ is valid for C/ObjC but not for C++
+In file included from /home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include/ATen/Parallel.h:140,
+                 from /home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include/torch/csrc/api/include/torch/utils.h:3,
+                 from /home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include/torch/csrc/api/include/torch/nn/cloneable.h:5,
+                 from /home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include/torch/csrc/api/include/torch/nn.h:3,
+                 from /home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include/torch/csrc/api/include/torch/all.h:13,
+                 from /home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include/torch/csrc/api/include/torch/torch.h:3,
+                 from /home/deeplab/devel/Global-Flow-Local-Attention/model/networks/block_extractor/block_extractor_cuda.cc:2:
+/home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/include/ATen/ParallelOpenMP.h:83: warning: ignoring ‘#pragma omp parallel’ [-Wunknown-pragmas]
+   83 | #pragma omp parallel for if ((end - begin) >= grain_size)
+      | 
+creating build/lib.linux-x86_64-3.8
+g++ -pthread -shared -B /home/deeplab/miniconda3/envs/deep/compiler_compat -L/home/deeplab/miniconda3/envs/deep/lib -Wl,-rpath=/home/deeplab/miniconda3/envs/deep/lib -Wl,--no-as-needed -Wl,--sysroot=/ /home/deeplab/devel/Global-Flow-Local-Attention/model/networks/block_extractor/build/temp.linux-x86_64-3.8/block_extractor_cuda.o /home/deeplab/devel/Global-Flow-Local-Attention/model/networks/block_extractor/build/temp.linux-x86_64-3.8/block_extractor_kernel.o -L/home/deeplab/miniconda3/envs/deep/lib/python3.8/site-packages/torch/lib -L/usr/lib64 -lc10 -ltorch -ltorch_cpu -ltorch_python -lcudart -lc10_cuda -ltorch_cuda_cu -ltorch_cuda_cpp -o build/lib.linux-x86_64-3.8/block_extractor_cuda.cpython-38-x86_64-linux-gnu.so
+creating build/bdist.linux-x86_64
+creating build/bdist.linux-x86_64/egg
+copying build/lib.linux-x86_64-3.8/block_extractor_cuda.cpython-38-x86_64-linux-gnu.so -> build/bdist.linux-x86_64/egg
+creating stub loader for block_extractor_cuda.cpython-38-x86_64-linux-gnu.so
+byte-compiling build/bdist.linux-x86_64/egg/block_extractor_cuda.py to block_extractor_cuda.cpython-38.pyc
+creating build/bdist.linux-x86_64/egg/EGG-INFO
+copying block_extractor_cuda.egg-info/PKG-INFO -> build/bdist.linux-x86_64/egg/EGG-INFO
+copying block_extractor_cuda.egg-info/SOURCES.txt -> build/bdist.linux-x86_64/egg/EGG-INFO
+copying block_extractor_cuda.egg-info/dependency_links.txt -> build/bdist.linux-x86_64/egg/EGG-INFO
+copying block_extractor_cuda.egg-info/top_level.txt -> build/bdist.linux-x86_64/egg/EGG-INFO
+writing build/bdist.linux-x86_64/egg/EGG-INFO/native_libs.txt
+creating dist
+creating 'dist/block_extractor_cuda-0.0.0-py3.8-linux-x86_64.egg' and adding 'build/bdist.linux-x86_64/egg' to it
+removing 'build/bdist.linux-x86_64/egg' (and everything under it)
+Processing block_extractor_cuda-0.0.0-py3.8-linux-x86_64.egg
+creating /home/deeplab/.local/lib/python3.8/site-packages/block_extractor_cuda-0.0.0-py3.8-linux-x86_64.egg
+Extracting block_extractor_cuda-0.0.0-py3.8-linux-x86_64.egg to /home/deeplab/.local/lib/python3.8/site-packages
+Adding block-extractor-cuda 0.0.0 to easy-install.pth file
+
+Installed /home/deeplab/.local/lib/python3.8/site-packages/block_extractor_cuda-0.0.0-py3.8-linux-x86_64.egg
+Processing dependencies for block-extractor-cuda==0.0.0
+Finished processing dependencies for block-extractor-cuda==0.0.0
