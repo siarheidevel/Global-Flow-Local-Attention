@@ -96,20 +96,32 @@ class Dior(BaseModel):
         if self.isTrain:
             # TODO check network normalization
             # pose conditioned
-            if opt.with_D_PB:
-                self.net_D_PB=init_network(network.discriminator.PatchDiscriminator(
-                    input_nc=3+18, ndf=64, img_f=512, layers=3, norm='batch', activation='LeakyReLU', use_spect=opt.use_spect_d,
+            if opt.with_D_PB:                
+                self.net_D_PB=init_network(network.discriminator.ResDiscriminator(
+                    input_nc=3+18, ndf=64, img_f=128, layers=4, norm='instance', 
+                    activation='LeakyReLU', use_spect=opt.use_spect_d,
                     use_coord=False), opt)
+                # self.net_D_PB=init_network(network.discriminator.PatchDiscriminator(
+                #     input_nc=3+18, ndf=64, img_f=512, layers=3, norm='batch', activation='LeakyReLU', use_spect=opt.use_spect_d,
+                #     use_coord=False), opt)
             # segment conditioned
             if opt.with_D_PS:
-                self.net_D_PS=init_network(network.discriminator.PatchDiscriminator(
-                    input_nc=3+len(SEG.labels), ndf=64, img_f=512, layers=3, norm='batch', activation='LeakyReLU', use_spect=opt.use_spect_d,
+                # self.net_D_PS=init_network(network.discriminator.PatchDiscriminator(
+                #     input_nc=3+len(SEG.labels), ndf=64, img_f=512, layers=3, norm='batch', activation='LeakyReLU', use_spect=opt.use_spect_d,
+                #     use_coord=False), opt)
+                self.net_D_PS=init_network(network.discriminator.ResDiscriminator(
+                    input_nc=3+len(SEG.labels), ndf=64, img_f=128, layers=4, norm='instance', 
+                    activation='LeakyReLU', use_spect=opt.use_spect_d,
                     use_coord=False), opt)
             # photo conditioned
             if opt.with_D_PP:
-                self.net_D_PP=init_network(network.discriminator.PatchDiscriminator(
-                    input_nc=3+3, ndf=64, img_f=512, layers=3, norm='batch', activation='LeakyReLU', use_spect=opt.use_spect_d,
+                self.net_D_PP=init_network(network.discriminator.ResDiscriminator(
+                    input_nc=3+3, ndf=64, img_f=128, layers=4, norm='instance', activation='LeakyReLU', 
+                    use_spect=opt.use_spect_d,
                     use_coord=False), opt)
+                # self.net_D_PP=init_network(network.discriminator.PatchDiscriminator(
+                #     input_nc=3+3, ndf=64, img_f=512, layers=3, norm='batch', activation='LeakyReLU', use_spect=opt.use_spect_d,
+                #     use_coord=False), opt)
 
         # # define the discriminator 
         # if self.opt.dataset_mode == 'fashion':
@@ -135,7 +147,7 @@ class Dior(BaseModel):
            
 
             # freeze flow model
-            base_function._freeze(self.net_FlowG)
+            # base_function._freeze(self.net_FlowG)
             # define the optimizer
             self.optimizer_G = torch.optim.Adam(itertools.chain(
                                                filter(lambda p: p.requires_grad, self.net_DiorG.parameters()),
@@ -158,7 +170,7 @@ class Dior(BaseModel):
                 self.optimizer_DPP = torch.optim.Adam(itertools.chain(
                                     filter(lambda p: p.requires_grad, self.net_D_PP.parameters())),
                                     lr=opt.lr*opt.ratio_g2d, betas=(opt.beta1, 0.999))
-                self.optimizers.append(self.optimizer_DPS)
+                self.optimizers.append(self.optimizer_DPP)
             
         # load the pre-trained model and schedulers
         self.setup(opt)
@@ -179,7 +191,7 @@ class Dior(BaseModel):
 
         
         # freeze flow model
-        base_function._freeze(self.net_FlowG)
+        # base_function._freeze(self.net_FlowG)
         # base_function._freeze(self.net_Dec)
         # base_function._freeze(self.net_Enc)
         # base_function._unfreeze(self.net_Enc.soft_mask)

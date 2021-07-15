@@ -43,7 +43,7 @@ class ResDiscriminator(BaseNetwork):
         for i in range(self.layers - 1):
             model = getattr(self, 'encoder' + str(i))
             out = model(out)
-        out = self.conv(self.nonlinearity(out))
+        # out = self.conv(self.nonlinearity(out))
         return out
 
 
