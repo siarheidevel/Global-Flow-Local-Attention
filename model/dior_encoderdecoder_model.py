@@ -6,7 +6,9 @@ from model.networks import base_function, external_function, BaseNetwork
 from data.dior_dataset import SEG
 from model.networks.base_network import freeze_network, init_network, print_network
 import model.networks as network
-import model.networks.dior_models as dior_models
+# import model.networks.dior_models as dior_models
+# import model.networks.dior_multi_model as dior_multi_model
+import model.networks.dior_single_model as dior_single_model
 from util import task, util
 import itertools
 import data as Dataset
@@ -69,10 +71,10 @@ class Dior_EncoderDecoder(BaseModel):
         # self.net_G = network.define_g(opt, image_nc=opt.image_nc, structure_nc=opt.structure_nc, ngf=64, img_f=512,
         #                               layers=opt.layers, num_blocks=2, use_spect=opt.use_spect_g, attn_layer=opt.attn_layer, 
         #                               norm='instance', activation='LeakyReLU', extractor_kz=opt.kernel_size)
-        self.net_Enc = init_network(dior_models.MultiSegmentEncoder(input_dim=3,style_dim=opt.style_dim,
-            inner_dim=64, norm='none',activation='LeakyReLU',pad_type='reflect'), opt)
-        self.net_Dec = init_network(dior_models.MultiDecoder(input_dim=opt.style_dim, 
-            output_dim=3,norm='layer'), opt)
+        # self.net_Enc = init_network(dior_multi_model.MultiEncoder2(input_img_dim=3,style_dim=256, norm='none',activation='LeakyReLU',pad_type='reflect'), opt)
+        # self.net_Dec = init_network(dior_multi_model.MultiDecoder2(input_dim=256, output_dim=3,norm='layer'), opt)\
+        self.net_Enc = init_network(dior_single_model.Encoder2(input_img_dim=3,style_dim=256, norm='none',activation='LeakyReLU',pad_type='reflect'), opt,init_type='kaiming')
+        self.net_Dec = init_network(dior_single_model.Decoder2(input_dim=256, output_dim=3,norm='layer'), opt,init_type='kaiming')
         # check weights torch.sum(next(self.net_Enc.cpu().vgg.parameters())- next(external_function.VGG19().parameters()))
         
 
@@ -127,12 +129,12 @@ class Dior_EncoderDecoder(BaseModel):
         self.soft_mask_list=[]
         b,_,h,w = self.input_P1.size()
         flow0 = torch.zeros((b,2,int(h/4),int(w/4)), device=self.input_P1.device)
-        flow1 = torch.zeros((b,2,int(h/2),int(w/2)), device=self.input_P1.device)
+        # flow1 = torch.zeros((b,2,int(h/2),int(w/2)), device=self.input_P1.device)
         # TODO soft mask train
         seg_mask =torch.ones((b,1,h,w), device=self.input_P1.device)
-        tx, mx = self.net_Enc(seg_img=self.input_P1, seg_mask = seg_mask , flows=[flow0, flow1])
+        tx, mx = self.net_Enc(seg_img=self.input_P1, seg_mask = seg_mask , flow=flow0)
         # self.soft_mask_difference(tx_mask,seg_mask)
-        self.img_gen = self.net_Dec(*tx)
+        self.img_gen = self.net_Dec(tx)
 
     # def forward(self):
     #     """Run forward processing to get the inputs"""

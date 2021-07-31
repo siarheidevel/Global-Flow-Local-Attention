@@ -131,10 +131,10 @@ class BaseModel():
             value = np.transpose(value[0,0,...].unsqueeze(0).detach().cpu().numpy(),(1,2,0))
             result = (value*255).astype(np.uint8)
         
-        elif value.size(1) == 10: # seg_map one-hot to
+        elif value.size(1) == 9: # seg_map one-hot to
             value = np.transpose(value[0].detach().cpu().numpy(),(1,2,0))
             value = np.argmax(value,axis=2)
-            value = (value*20).astype(np.uint8)
+            value = (value*25).astype(np.uint8)
             result = value.astype(np.uint8)[...,np.newaxis]
 
         else:

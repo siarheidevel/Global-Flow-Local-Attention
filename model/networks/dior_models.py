@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from model.base_model import BaseModel
 from model.networks import base_function, external_function, BaseNetwork
-from data.dior_dataset import SEG
 import model.networks as network
 from util import task, util
 import itertools
@@ -439,6 +438,9 @@ class MultiDiorGenerator(BaseNetwork):
 
     def forward(self, segment_encoder: MultiSegmentEncoder, image_decoder: MultiDecoder, flow_generator,
                 source_Img, source_Pose, source_Seg, source_Mask, target_Pose, target_Seg):
+        from data.dior2_dataset import SEG
+
+
         flow_fields = flow_generator(source_Img, source_Pose, target_Pose)[0]
         # take h/4, w/4 flow                
         flows = flow_fields[1:]
@@ -473,7 +475,7 @@ class MultiDiorGenerator(BaseNetwork):
         intermediate_images.append(body_img.cpu())
         # imsave import cv2;cv2.imwrite('obody.png',127 + 128 * body_img[0].detach().permute(1,2,0).cpu().numpy())
         
-        for seg_id in [SEG.HAIR, SEG.SHOES, SEG.PANTS, SEG.UPPER, SEG.DRESS, SEG.HAT]:
+        for seg_id in [SEG.HAIR, SEG.SHOES, SEG.PANTS, SEG.UPPER, SEG.HAT]:
             seg = source_Seg[:,seg_id,...].unsqueeze(1)
             t_seg = target_Seg[:,seg_id,...].unsqueeze(1)
             garment_texture, garment_mask = segment_encoder(source_Img, seg, flows)
@@ -487,3 +489,4 @@ class MultiDiorGenerator(BaseNetwork):
         final_img = image_decoder(*z_style)
         # imsave import cv2;cv2.imwrite('ofinal.png',127 + 128 * final_img[0].detach().permute(1,2,0).cpu().numpy())
         return flow_fields, final_img, soft_mask_list, intermediate_images
+

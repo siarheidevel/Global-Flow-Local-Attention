@@ -39,6 +39,10 @@ class Dior_Flow(BaseModel):
         parser.add_argument('--lambda_correct', type=float, default=5.0, help='weight for the Sampling Correctness loss')
         parser.add_argument('--lambda_regularization', type=float, default=0.0025, help='weight for the affine regularization loss')
 
+        parser.add_argument('--lambda_rec', type=float, default=5.0, help='weight for image reconstruction loss')
+        parser.add_argument('--lambda_style', type=float, default=500.0, help='weight for the VGG19 style loss')
+        parser.add_argument('--lambda_content', type=float, default=0.5, help='weight for the VGG19 content loss')
+
         parser.add_argument('--use_spect_g', action='store_false', help="whether use spectral normalization in generator")
         parser.add_argument('--use_spect_d', action='store_false', help="whether use spectral normalization in discriminator")
         parser.add_argument('--save_input', action='store_false', help="whether save the input images when testing")
@@ -50,7 +54,7 @@ class Dior_Flow(BaseModel):
 
     def __init__(self, opt):
         BaseModel.__init__(self, opt)
-        self.loss_names = ['correctness_gen', 'regularization_flow']
+        self.loss_names = ['correctness_gen', 'regularization_flow', 'l1', 'content_gen']
 
         self.visual_names = ['input_P1','input_P2','input_BP1', 'input_BP2','img_gen','flow_fields'
             ]
@@ -81,6 +85,10 @@ class Dior_Flow(BaseModel):
             # geo loss
             self.Correctness = external_function.PerceptualCorrectness().to(opt.device)
             self.Regularization = external_function.MultiAffineRegularizationLoss(kz_dic=opt.kernel_size).to(opt.device)
+
+            self.L1loss = torch.nn.L1Loss()
+
+            self.Perceptual = external_function.PerceptualLoss().to(opt.device)
 
             # define the optimizer
             self.optimizer_G = torch.optim.Adam(itertools.chain(
@@ -130,8 +138,10 @@ class Dior_Flow(BaseModel):
         """Run forward processing to get the inputs"""
         self.flow_fields, _ = self.net_FlowG(self.input_P1, self.input_BP1, self.input_BP2)
         self.img_gen = [util.bilinear_warp(self.input_P1,self.flow_fields[0]),
-            util.bilinear_warp(self.input_P1,self.flow_fields[1]),
-            util.bilinear_warp(self.input_P1,self.flow_fields[2])]
+            util.bilinear_warp(self.input_P1,self.flow_fields[1])]
+        # self.img_gen = [util.bilinear_warp(self.input_P1,self.flow_fields[0]),
+        #     util.bilinear_warp(self.input_P1,self.flow_fields[1]),
+        #     util.bilinear_warp(self.input_P1,self.flow_fields[2])]
 
 
 
@@ -152,6 +162,20 @@ class Dior_Flow(BaseModel):
         loss_regularization_flow = self.Regularization(self.flow_fields)
         self.loss_regularization_flow = loss_regularization_flow * self.opt.lambda_regularization
 
+        #l1 loss
+        total_l1_loss = 0
+        total_content_loss = 0
+        for i in range(len(self.flow_fields)):
+            # flow = F.interpolate(self.flow_fields[i],self.input_P2.shape[2:], mode='bilinear')
+            # warped_img = util.bilinear_warp(self.input_P1,flow)
+            # real_img =self.input_P2
+            warped_img = self.img_gen[i]
+            real_img = F.interpolate(self.input_P2, warped_img.shape[2:])
+            total_l1_loss +=  self.L1loss(warped_img, real_img)
+            loss_content_gen = self.Perceptual(warped_img, real_img)
+            total_content_loss += loss_content_gen
+        self.loss_l1 = total_l1_loss * self.opt.lambda_rec
+        self.loss_content_gen = loss_content_gen*self.opt.lambda_content
         # total weighted loss
         total_gen_loss = 0
         for name in self.loss_names:

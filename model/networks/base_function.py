@@ -203,6 +203,8 @@ def get_nonlinearity_layer(activation_type='PReLU'):
         nonlinearity_layer = nn.SELU()
     elif activation_type == 'tanh':
         nonlinearity_layer = nn.Tanh()
+    elif activation_type == 'sigmoid':
+        nonlinearity_layer = nn.Sigmoid()
     elif activation_type == 'LeakyReLU':
         nonlinearity_layer = nn.LeakyReLU(0.1)
     elif activation_type == 'PReLU':
