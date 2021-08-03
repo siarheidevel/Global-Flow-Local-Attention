@@ -121,7 +121,7 @@ def process_image_dir(image_dir: Path, from_seq=0, to_seq=0):
 if __name__ == '__main__':
     # process_image_dir(Path("/home/deeplab/datasets/custom_fashion/data/wildberries_ru"))
     # process_image_dir(Path("/home/deeplab/datasets/custom_fashion/data"))
-    process_image_dir(Path('/home/deeplab/datasets/deepfashion/diordataset_custom/img_highres'))
+    process_image_dir(Path('/home/deeplab/datasets/deepfashion/diordataset_custom/img_highres',from_seq=50000))
 # process_image_dir(Path("/home/deeplab/datasets/custom_fashion/data/lamoda_ru"), from_seq=200000, to_seq=300000)
 # process_image_dir(Path("/home/deeplab/datasets/custom_fashion/data/lamoda_ru"))
 

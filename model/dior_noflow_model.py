@@ -17,7 +17,7 @@ import random
 import os
 
 
-class Dior(BaseModel):
+class Dior_noflow(BaseModel):
     """
        Deep Spatial Transformation For Dior Based Image Generation
     """
@@ -26,8 +26,6 @@ class Dior(BaseModel):
 
     @staticmethod
     def modify_options(parser, is_train=True):
-        parser.add_argument('--attn_layer', action=util.StoreList, metavar="VAL1,VAL2...", help="The number layers away from output layer")
-        parser.add_argument('--kernel_size', action=util.StoreDictKeyPair, metavar="KEY1=VAL1,KEY2=VAL2...")
         parser.add_argument('--layers', type=int, default=3, help='number of layers in G')
         parser.add_argument('--style_dim', type=int, default=128, help='dimension of style vector')
         parser.add_argument('--style_blocks', type=int, default=7, help='number of style blocks')
@@ -59,7 +57,7 @@ class Dior(BaseModel):
         parser.add_argument('--save_input', action='store_false', help="whether save the input images when testing")
 
         parser.set_defaults(use_spect_g=False)
-        parser.set_defaults(use_spect_d=True)
+        # parser.set_defaults(use_spect_d=False)
         parser.set_defaults(save_input=False)
 
         return parser
@@ -67,35 +65,26 @@ class Dior(BaseModel):
 
     def __init__(self, opt):
         BaseModel.__init__(self, opt)
-        self.loss_names = ['correctness_gen', 'regularization_flow', 'l1', 'content_gen', 'style_gen', 'mask',
+        self.loss_names = ['l1', 'content_gen', 'style_gen', 'mask',
                             'g_pb', 'g_pp', 'g_ps',
                             'd_pb', 'd_pp', 'd_ps']
-        # self.loss_names = ['l1', 'content_gen', 'style_gen', 'mask',
-        #                     'g_pb', 'g_pp', 'g_ps',
-        #                     'd_pb', 'd_pp', 'd_ps']
+        # self.loss_names = ['l1', 'content_gen', 'style_gen', 'mask']
 
         self.visual_names = ['input_P1','input_P2','input_BP1', 'input_BP2','input_SP1','input_SP2',
-            'img_gen', 'flow_fields','soft_mask_list','inter_images'
+            'img_gen', 'soft_mask_list','inter_images'
             ]
-        self.model_names = ['FlowG','Enc','Dec', 'DiorG','D_PB','D_PP','D_PS']
+        self.model_names = ['Enc','Dec', 'DiorG','D_PB','D_PP','D_PS']
+        # self.model_names = ['Enc','Dec', 'DiorG']
 
         self.FloatTensor = torch.cuda.FloatTensor if len(self.gpu_ids)>0 \
             else torch.FloatTensor
 
         self.net_Enc = init_network(dior_single_model.Encoder2(input_img_dim=3,style_dim=256, norm='none',activation='LeakyReLU',pad_type='reflect'), opt,init_type='kaiming')
         self.net_Dec = init_network(dior_single_model.Decoder2(input_dim=256, output_dim=3,norm='layer'), opt,init_type='kaiming')
-
-        self.net_FlowG = init_network(network.generator.PoseFlowNetGenerator(image_nc=3, structure_nc=18, ngf=64, img_f=512,
-                        encoder_layer=4, attn_layer=opt.attn_layer,
-                        norm='instance', activation='LeakyReLU',
-                        use_spect=opt.use_spect_g, use_coord=False), opt)
-
         
         self.net_DiorG = init_network(dior_single_model.Generator2(image_nc=3, structure_nc=18, 
             norm='instance', activation='LeakyReLU',
             use_spect=False, use_coord=False), opt)
-        
-        self.flow2color = util.flow2color()
     
         if self.isTrain:
             # TODO check network normalization
@@ -105,14 +94,8 @@ class Dior(BaseModel):
                     input_nc=3+18, ndf=64, img_f=128, layers=4, norm='instance',
                     activation='LeakyReLU', use_spect=opt.use_spect_d,
                     use_coord=False), opt)
-                # self.net_D_PB=init_network(network.discriminator.PatchDiscriminator(
-                #     input_nc=3+18, ndf=64, img_f=512, layers=3, norm='batch', activation='LeakyReLU', use_spect=opt.use_spect_d,
-                #     use_coord=False), opt)
             # segment conditioned
             if opt.with_D_PS:
-                # self.net_D_PS=init_network(network.discriminator.PatchDiscriminator(
-                #     input_nc=3+len(SEG.labels), ndf=64, img_f=512, layers=3, norm='batch', activation='LeakyReLU', use_spect=opt.use_spect_d,
-                #     use_coord=False), opt)
                 from data.dior2_dataset import SEG
                 self.net_D_PS=init_network(network.discriminator.ResDiscriminator(
                     input_nc=3+len(SEG.labels), ndf=64, img_f=128, layers=4, norm='instance', 
@@ -124,16 +107,9 @@ class Dior(BaseModel):
                     input_nc=3+3, ndf=64, img_f=128, layers=4, norm='instance', activation='LeakyReLU', 
                     use_spect=opt.use_spect_d,
                     use_coord=False), opt)
-                # self.net_D_PP=init_network(network.discriminator.PatchDiscriminator(
-                #     input_nc=3+3, ndf=64, img_f=512, layers=3, norm='batch', activation='LeakyReLU', use_spect=opt.use_spect_d,
-                #     use_coord=False), opt)
 
         if self.isTrain:
             # define the loss functions
-            # geo loss
-            self.Correctness = external_function.PerceptualCorrectness().to(opt.device)
-            self.Regularization = external_function.MultiAffineRegularizationLoss(kz_dic=opt.kernel_size).to(opt.device)
-
             # content loss:l1 + content + style
             self.L1loss = torch.nn.L1Loss()
             self.Vggloss = external_function.VGGLoss().to(opt.device)
@@ -146,7 +122,7 @@ class Dior(BaseModel):
            
 
             # freeze flow model
-            base_function._freeze(self.net_FlowG)
+            # base_function._freeze(self.net_FlowG)
             # base_function._freeze(self.net_Enc)
             # base_function._unfreeze(self.net_Enc.mask2)
             # base_function._freeze(self.net_Dec)
@@ -154,8 +130,7 @@ class Dior(BaseModel):
             self.optimizer_G = torch.optim.Adam(itertools.chain(
                                                filter(lambda p: p.requires_grad, self.net_DiorG.parameters()),
                                                filter(lambda p: p.requires_grad, self.net_Dec.parameters()),
-                                               filter(lambda p: p.requires_grad, self.net_Enc.parameters()),
-                                               filter(lambda p: p.requires_grad, self.net_FlowG.parameters())),
+                                               filter(lambda p: p.requires_grad, self.net_Enc.parameters())),
                                                lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             if opt.with_D_PB:
@@ -178,7 +153,6 @@ class Dior(BaseModel):
         self.setup(opt)
 
         print('---------- Networks initialized -------------')
-        print_network(self.net_FlowG)
         print_network(self.net_Dec)
         print_network(self.net_Enc)
         print_network(self.net_DiorG)
@@ -216,9 +190,8 @@ class Dior(BaseModel):
         self.input_P1 = self.input_P1 * self.input_M1.unsqueeze(1)
         self.input_SP1 = self.input_SP1 * self.input_M1.unsqueeze(1)
         """Run forward processing to get the inputs"""
-        self.flow_fields = self.net_FlowG(self.input_P1, self.input_BP1, self.input_BP2)[0]
-        # take h/4, w/4 flow                
-        flow = self.flow_fields[-1]
+        b,_,h,w = self.input_P1.size()
+        flow = torch.zeros((b,2,int(h/4),int(w/4)), device=self.input_P1.device)
         self.img_gen,self.soft_mask_list, self.inter_images = self.net_DiorG(
             self.net_Enc,self.net_Dec, flow,
             self.input_P1, self.input_BP1, self.input_SP1, self.input_BP2, self.input_SP2)
@@ -227,14 +200,6 @@ class Dior(BaseModel):
     def backward_G(self):
         """Calculate training loss for the generator"""
         # calculate geometric loss #####
-        # Calculate Sampling Correctness Loss
-        loss_correctness_gen = self.Correctness(self.input_P2, self.input_P1, self.flow_fields, self.opt.attn_layer)
-        self.loss_correctness_gen = loss_correctness_gen * self.opt.lambda_correct
-
-        # Calculate regularization term
-        loss_regularization_flow = self.Regularization(self.flow_fields)
-        self.loss_regularization_flow = loss_regularization_flow * self.opt.lambda_regularization
-
         ########## Content loss #######################
         # Calculate l1 loss
         loss_l1 = self.L1loss(self.img_gen, self.input_P2)
@@ -305,6 +270,7 @@ class Dior(BaseModel):
 
     def optimize_parameters(self):
         """update network weights"""
+        # with torch.cuda.amp.autocast(enabled=True):
         self.forward()
 
         if self.opt.with_D_PB:

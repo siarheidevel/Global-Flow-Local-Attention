@@ -224,6 +224,7 @@ class Generator2(BaseNetwork):
             # skin_avg = torch.nn.AdaptiveAvgPool2d(1)(skin_texture * skin_mask)
             # broadcast skin_avg over body mask
             body_texture = (1 - bg_masks[i]) * skin_avg +  bg_masks[i] * bg_textures[i] + face_masks[i] *  face_textures[i]
+            # body_texture = (1 - bg_masks[i]) * skin_avg +  bg_masks[i] * bg_textures[i] + skin_textures[i] *  skin_textures[i]
             body_textures.append(body_texture)
             body_masks.append(torch.ones_like(body_texture))
         return  body_textures, body_masks
@@ -231,14 +232,14 @@ class Generator2(BaseNetwork):
 
     def forward(self, segment_encoder: Encoder2,
                 image_decoder: Decoder2,
-                flow_generator,
+                flow,
                 source_Img, source_Pose, source_Seg, target_Pose, target_Seg):
         from data.dior2_dataset import SEG
 
 
-        flow_fields = flow_generator(source_Img, source_Pose, target_Pose)[0]
-        # take h/4, w/4 flow                
-        flow = flow_fields[-1]
+        # flow_fields = flow_generator(source_Img, source_Pose, target_Pose)[0]
+        # # take h/4, w/4 flow                
+        # flow = flow_fields[-1]
         # # masking for inpainting        
         # source_Img = source_Img * source_Mask.unsqueeze(1)
         # source_Seg = source_Seg * source_Mask.unsqueeze(1)
@@ -283,11 +284,12 @@ class Generator2(BaseNetwork):
             if index+1==len(garments):
                 final_img = image_decoder(z_style)
             else:
-                garment_img = image_decoder(z_style, detach_grad=True)
-                intermediate_images.append(garment_img.cpu())     
+                with torch.no_grad():
+                    garment_img = image_decoder(z_style, detach_grad=True)
+                    intermediate_images.append(garment_img.cpu())     
         
         # imsave import cv2;cv2.imwrite('ofinal.png',127 + 128 * final_img[0].detach().permute(1,2,0).cpu().numpy())
-        return flow_fields, final_img, soft_mask_list, intermediate_images
+        return final_img, soft_mask_list, intermediate_images
 
 
 

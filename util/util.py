@@ -56,6 +56,8 @@ def bilinear_warp(img, flow):
     flow = torch.cat((flow_x,flow_y), 1)
 
     grid = (grid+flow).permute(0, 2, 3, 1)
+    if img.dtype != grid.dtype:
+        grid = grid.type(img.dtype)
     warp = torch.nn.functional.grid_sample(img, grid)
     return  warp
     

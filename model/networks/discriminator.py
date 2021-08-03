@@ -37,6 +37,7 @@ class ResDiscriminator(BaseNetwork):
             block = ResBlockEncoder(ndf*mult_prev, ndf*mult, ndf*mult_prev, norm_layer, nonlinearity, use_spect, use_coord)
             setattr(self, 'encoder' + str(i), block)
         self.conv = SpectralNorm(nn.Conv2d(ndf*mult, 1, 1))
+        # self.conv = spectral_norm(nn.Conv2d(ndf*mult, 1, kernel_size=1, stride=1, padding=0), use_spect)
 
     def forward(self, x):
         out = self.block0(x)

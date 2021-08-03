@@ -109,7 +109,11 @@ def prepare_pose_annotation(images_dir: Path):
                     category = meta.get('name','')
                     gender = meta.get('gender','')
             except:
-                logging.warning(f' No meta for pose file {pose_file}')
+                try:
+                    gender = {'MEN':'man', 'WOMEN':'woman'}[image_file.parent.parent.parent.name]
+                    category = image_file.parent.parent.name
+                except:
+                    logging.warning(f' No meta for pose file {pose_file}')
 
             pose_annotation_list.append([image_file, image_group_id, points_y,points_x, height,width,gender, category])
             pose_groups[image_group_id] = pose_groups.get(image_group_id, []) + [image_file]
@@ -162,5 +166,9 @@ if __name__ == "__main__":
     # prepare_pose_annotation(Path('/home/deeplab/datasets/custom_fashion/demo'))
     # prepare_pose_annotation(Path('/home/deeplab/datasets/custom_fashion/data/'))
     stat_dataset(Path('/home/deeplab/datasets/custom_fashion/data/annotation_index.csv'))
+    # prepare_pose_annotation(Path('/home/deeplab/datasets/deepfashion/diordataset_custom'))
+    stat_dataset(Path('/home/deeplab/datasets/deepfashion/diordataset_custom/annotation_index.csv'))
+
+    
     print('finished')
     

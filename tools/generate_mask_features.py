@@ -149,7 +149,7 @@ lip2reduced_ids = np.array([(lip_dataset_settings['lip']['label'].index(lip_labe
                             reduced_dataset['labels'][red_label]) for (lip_label, red_label) in reduced_dataset['lip2reduced'].items()]).T
 redused_legend = draw_legend(rgb_reduced_palette_colors,[k for k,v in reduced_dataset['labels'].items()],
     (lip_dataset_settings['lip']['input_size'][0],200))
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 human_parsing_model = load_model()
 
 
