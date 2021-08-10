@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from model.base_model import BaseModel
-from model.networks import base_function, external_function, BaseNetwork
+from model.networks import base_function, external_function2, BaseNetwork
 from model.networks.base_network import freeze_network, init_network, print_network
 import model.networks as network
 # import model.networks.dior_models as dior_models
@@ -78,8 +78,9 @@ class Dior_noflow(BaseModel):
 
         self.FloatTensor = torch.cuda.FloatTensor if len(self.gpu_ids)>0 \
             else torch.FloatTensor
-
+        self.vgg = external_function2.VGG19Limited('./saved_models/vgg19-dcbb9e9d.pth').to(opt.device)
         self.net_Enc = init_network(dior_single_model.Encoder2(input_img_dim=3,style_dim=256, norm='none',activation='LeakyReLU',pad_type='reflect'), opt,init_type='kaiming')
+        self.net_Enc.vgg = self.vgg
         self.net_Dec = init_network(dior_single_model.Decoder2(input_dim=256, output_dim=3,norm='layer'), opt,init_type='kaiming')
         
         self.net_DiorG = init_network(dior_single_model.Generator2(image_nc=3, structure_nc=18, 
@@ -112,10 +113,11 @@ class Dior_noflow(BaseModel):
             # define the loss functions
             # content loss:l1 + content + style
             self.L1loss = torch.nn.L1Loss()
-            self.Vggloss = external_function.VGGLoss().to(opt.device)
+            self.Vggloss = external_function2.VGGLoss().to(opt.device)
+            self.Vggloss.vgg = self.vgg
 
             # gan loss
-            self.GANloss = external_function.AdversarialLoss(opt.gan_mode).to(opt.device)
+            self.GANloss = external_function2.AdversarialLoss(opt.gan_mode).to(opt.device)
             
             # segmentation loss
             self.SegSoftmaskloss = torch.nn.BCELoss()       

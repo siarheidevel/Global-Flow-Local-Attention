@@ -113,9 +113,13 @@ class BaseModel():
             result=np.transpose(torch.cat((value[0],value[1]),-1)[0].detach().cpu().numpy()*255,(1,2,0))
             return result.astype(np.uint8)
 
-        if 'flow' in name: # flow_field
+        if 'flow_fields' == name: # flow_field
             convert = getattr(self, 'flow2color')
             value = convert(value)
+        
+        if 'flow_masks' ==name:
+            result=value[0].detach().cpu().numpy()*255
+            return np.transpose(result.astype(np.uint8),(1,2,0))
 
         if value.size(1) == 18: # bone_map
             value = np.transpose(value[0].detach().cpu().numpy(),(1,2,0))

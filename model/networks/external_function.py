@@ -225,7 +225,7 @@ class PerceptualCorrectness(nn.Module):
 
     """
 
-    def __init__(self, layer=['rel1_1','relu2_1','relu3_1','relu4_1']):
+    def __init__(self, layer=['relu1_1','relu2_1','relu3_1','relu4_1']):
         super(PerceptualCorrectness, self).__init__()
         self.add_module('vgg', VGG19())
         self.layer = layer  

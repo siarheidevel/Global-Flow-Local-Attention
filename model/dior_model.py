@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from model.base_model import BaseModel
-from model.networks import base_function, external_function, BaseNetwork
+from model.networks import base_function, external_function2, BaseNetwork
 from model.networks.base_network import freeze_network, init_network, print_network
 import model.networks as network
 # import model.networks.dior_models as dior_models
@@ -68,7 +68,7 @@ class Dior(BaseModel):
     def __init__(self, opt):
         BaseModel.__init__(self, opt)
         self.loss_names = ['correctness_gen', 'regularization_flow', 'l1', 'content_gen', 'style_gen', 'mask',
-                            'g_pb', 'g_pp', 'g_ps',
+                            'g_pb', 'g_pp', 'g_ps', 'g_pb_features', 'g_pp_features', 'g_ps_features',
                             'd_pb', 'd_pp', 'd_ps']
         # self.loss_names = ['l1', 'content_gen', 'style_gen', 'mask',
         #                     'g_pb', 'g_pp', 'g_ps',
@@ -81,8 +81,11 @@ class Dior(BaseModel):
 
         self.FloatTensor = torch.cuda.FloatTensor if len(self.gpu_ids)>0 \
             else torch.FloatTensor
+        
+        self.vgg = external_function2.VGG19Limited('./saved_models/vgg19-dcbb9e9d.pth').to(opt.device)
 
         self.net_Enc = init_network(dior_single_model.Encoder2(input_img_dim=3,style_dim=256, norm='none',activation='LeakyReLU',pad_type='reflect'), opt,init_type='kaiming')
+        self.net_Enc.vgg = self.vgg
         self.net_Dec = init_network(dior_single_model.Decoder2(input_dim=256, output_dim=3,norm='layer'), opt,init_type='kaiming')
 
         self.net_FlowG = init_network(network.generator.PoseFlowNetGenerator(image_nc=3, structure_nc=18, ngf=64, img_f=512,
@@ -101,52 +104,56 @@ class Dior(BaseModel):
             # TODO check network normalization
             # pose conditioned
             if opt.with_D_PB:                
-                self.net_D_PB=init_network(network.discriminator.ResDiscriminator(
-                    input_nc=3+18, ndf=64, img_f=128, layers=4, norm='instance',
-                    activation='LeakyReLU', use_spect=opt.use_spect_d,
-                    use_coord=False), opt)
-                # self.net_D_PB=init_network(network.discriminator.PatchDiscriminator(
-                #     input_nc=3+18, ndf=64, img_f=512, layers=3, norm='batch', activation='LeakyReLU', use_spect=opt.use_spect_d,
+                # self.net_D_PB=init_network(network.discriminator.ResDiscriminator(
+                #     input_nc=3+18, ndf=64, img_f=128, layers=4, norm='instance',
+                #     activation='LeakyReLU', use_spect=opt.use_spect_d,
                 #     use_coord=False), opt)
+                self.net_D_PB=init_network(external_function2.PatchDiscriminatorWithLayers(
+                    input_nc=3+18, ndf=64, img_f=256, layers=4, norm='instance', activation='LeakyReLU', use_spect=opt.use_spect_d,
+                    use_coord=False), opt)
             # segment conditioned
             if opt.with_D_PS:
-                # self.net_D_PS=init_network(network.discriminator.PatchDiscriminator(
-                #     input_nc=3+len(SEG.labels), ndf=64, img_f=512, layers=3, norm='batch', activation='LeakyReLU', use_spect=opt.use_spect_d,
-                #     use_coord=False), opt)
                 from data.dior2_dataset import SEG
-                self.net_D_PS=init_network(network.discriminator.ResDiscriminator(
-                    input_nc=3+len(SEG.labels), ndf=64, img_f=128, layers=4, norm='instance', 
-                    activation='LeakyReLU', use_spect=opt.use_spect_d,
+                # self.net_D_PS=init_network(network.discriminator.ResDiscriminator(
+                #     input_nc=3+len(SEG.labels), ndf=64, img_f=128, layers=4, norm='instance', 
+                #     activation='LeakyReLU', use_spect=opt.use_spect_d,
+                #     use_coord=False), opt)
+                self.net_D_PS=init_network(external_function2.PatchDiscriminatorWithLayers(
+                    input_nc=3+len(SEG.labels), ndf=64, img_f=256, layers=4, norm='instance', activation='LeakyReLU', use_spect=opt.use_spect_d,
                     use_coord=False), opt)
             # photo conditioned
             if opt.with_D_PP:
-                self.net_D_PP=init_network(network.discriminator.ResDiscriminator(
-                    input_nc=3+3, ndf=64, img_f=128, layers=4, norm='instance', activation='LeakyReLU', 
-                    use_spect=opt.use_spect_d,
-                    use_coord=False), opt)
-                # self.net_D_PP=init_network(network.discriminator.PatchDiscriminator(
-                #     input_nc=3+3, ndf=64, img_f=512, layers=3, norm='batch', activation='LeakyReLU', use_spect=opt.use_spect_d,
+                # self.net_D_PP=init_network(network.discriminator.ResDiscriminator(
+                #     input_nc=3+3, ndf=64, img_f=128, layers=4, norm='instance', activation='LeakyReLU', 
+                #     use_spect=opt.use_spect_d,
                 #     use_coord=False), opt)
+                self.net_D_PP=init_network(external_function2.PatchDiscriminatorWithLayers(
+                    input_nc=3+3, ndf=64, img_f=256, layers=4, norm='instance', activation='LeakyReLU', use_spect=opt.use_spect_d,
+                    use_coord=False), opt)
 
         if self.isTrain:
             # define the loss functions
             # geo loss
-            self.Correctness = external_function.PerceptualCorrectness().to(opt.device)
-            self.Regularization = external_function.MultiAffineRegularizationLoss(kz_dic=opt.kernel_size).to(opt.device)
+            self.Correctness = external_function2.PerceptualCorrectness().to(opt.device)
+            self.Correctness.vgg = self.vgg
+            self.Regularization = external_function2.MultiAffineRegularizationLoss(kz_dic=opt.kernel_size).to(opt.device)
 
             # content loss:l1 + content + style
             self.L1loss = torch.nn.L1Loss()
-            self.Vggloss = external_function.VGGLoss().to(opt.device)
+            self.Vggloss = external_function2.VGGLoss().to(opt.device)
+            self.Vggloss.vgg = self.vgg
 
+            # self.PerceptualLoss = external_function2.PerceptualLoss().to(opt.device)
+            # self.PerceptualLoss.vgg = self.vgg
             # gan loss
-            self.GANloss = external_function.AdversarialLoss(opt.gan_mode).to(opt.device)
-            
+            self.GANloss = external_function2.AdversarialLoss(opt.gan_mode).to(opt.device)
+            self.GanFeaturesLoss = external_function2.FeatureMappingsLoss()
             # segmentation loss
             self.SegSoftmaskloss = torch.nn.BCELoss()       
            
 
             # freeze flow model
-            base_function._freeze(self.net_FlowG)
+            # base_function._freeze(self.net_FlowG)
             # base_function._freeze(self.net_Enc)
             # base_function._unfreeze(self.net_Enc.mask2)
             # base_function._freeze(self.net_Dec)
@@ -241,7 +248,7 @@ class Dior(BaseModel):
         self.loss_l1 = loss_l1 * self.opt.lambda_rec
 
         # Calculate perceptual loss
-        loss_content_gen, loss_style_gen = self.Vggloss(self.img_gen, self.input_P2)  
+        loss_content_gen, loss_style_gen = self.Vggloss(self.img_gen, self.input_P2)
         self.loss_style_gen = loss_style_gen*self.opt.lambda_style
         self.loss_content_gen = loss_content_gen*self.opt.lambda_content
 
@@ -250,16 +257,31 @@ class Dior(BaseModel):
         # Calculate GAN loss
         if self.opt.with_D_PB:
             base_function._freeze(self.net_D_PB)
-            D_fake = self.net_D_PB(torch.cat((self.img_gen, self.input_BP2),1))
-            self.loss_g_pb = self.GANloss(D_fake, True, False) * self.opt.lambda_gb
+            D_fake, features_fake = self.net_D_PB(torch.cat((self.img_gen, self.input_BP2),1))
+            D_real, features_real = self.net_D_PB(torch.cat((self.input_P2, self.input_BP2),1))
+            gan_loss = self.GANloss(D_fake, True, False)
+            self.loss_g_pb = gan_loss * self.opt.lambda_gb
+            self.loss_g_pb_features = torch.tensor(0)
+            if gan_loss > 0.5:
+                self.loss_g_pb_features = self.GanFeaturesLoss(features_fake,features_real) * max(gan_loss.item()-0.5,0)
         if self.opt.with_D_PS:
             base_function._freeze(self.net_D_PS)
-            D_fake = self.net_D_PS(torch.cat((self.img_gen, self.input_SP2),1))
-            self.loss_g_ps = self.GANloss(D_fake, True, False) * self.opt.lambda_gs
+            D_fake, features_fake = self.net_D_PS(torch.cat((self.img_gen, self.input_SP2),1))
+            D_real, features_real = self.net_D_PS(torch.cat((self.input_P2, self.input_SP2),1))
+            gan_loss = self.GANloss(D_fake, True, False)
+            self.loss_g_ps = gan_loss * self.opt.lambda_gs
+            self.loss_g_ps_features = torch.tensor(0)
+            if gan_loss > 0.5:
+                self.loss_g_ps_features = self.GanFeaturesLoss(features_fake,features_real) * max(gan_loss.item()-0.5,0)
         if self.opt.with_D_PP:
             base_function._freeze(self.net_D_PP)
-            D_fake = self.net_D_PP(torch.cat((self.img_gen, self.input_P1),1))
-            self.loss_g_pp = self.GANloss(D_fake, True, False) * self.opt.lambda_gi
+            D_fake, features_fake = self.net_D_PP(torch.cat((self.img_gen, self.input_P1),1))
+            D_real, features_real = self.net_D_PP(torch.cat((self.input_P2, self.input_P1),1))
+            gan_loss = self.GANloss(D_fake, True, False)
+            self.loss_g_pp = gan_loss * self.opt.lambda_gi
+            self.loss_g_pp_features = torch.tensor(0)
+            if gan_loss > 0.5:
+                self.loss_g_pp_features = self.GanFeaturesLoss(features_fake,features_real) * max(gan_loss.item()-0.5,0)
 
         ########## Segmentation mask loss #################
         loss_mask = 0
@@ -267,7 +289,24 @@ class Dior(BaseModel):
             soft_mask, target_mask = soft_mask_target_mask
             loss_mask+=self.SegSoftmaskloss(soft_mask,target_mask)
         # loss_mask = loss_mask / len(self.soft_mask_list)
-        self.loss_mask = loss_mask * self.opt.lambda_seg        
+        self.loss_mask = loss_mask * self.opt.lambda_seg      
+
+        # ######### Intermediate image loss #########
+        # intermediate_image_loss = 0
+        # skin_mask_index = 2
+        # for index, inter_image in enumerate(self.inter_images):
+        #     soft_mask, target_mask = self.soft_mask_list[index+skin_mask_index]
+        #     i_pred = nn.Upsample(scale_factor=4, mode='bilinear')(soft_mask) * inter_image
+        #     i_real = nn.Upsample(scale_factor=4, mode='bilinear')(target_mask) * self.input_P2
+        #     # import cv2;cv2.imwrite('obody.png',12 * nn.Upsample(scale_factor=4, mode='bilinear')(soft_mask).detach().cpu().numpy())
+        #     # import cv2;cv2.imwrite('obody.png',127 + 128 * torch.cat((i_real[0],i_pred[0]),-1).detach().permute(1,2,0).cpu().numpy())
+        #     inter_l1_loss = torch.nn.MSELoss()(i_pred,i_real)
+        #     perc_loss = self.PerceptualLoss(i_pred,i_real)
+        #     intermediate_image_loss += inter_l1_loss +perc_loss
+        #     # inter_loss_content_gen, inter_loss_style_gen = self.Vggloss(i_pred,i_real)
+        #     # intermediate_image_loss += inter_l1_loss+ (inter_loss_content_gen + inter_loss_style_gen)
+        # self.loss_inter = intermediate_image_loss * 0.1
+
         
         # total weighted loss
         total_gen_loss = 0
@@ -284,17 +323,18 @@ class Dior(BaseModel):
 
             """Calculate GAN loss for the discriminator"""
             # Real
-            D_real = netD(real)
+            D_real, _ = netD(real)
             D_real_loss = self.GANloss(D_real, True, True)
             # fake
-            D_fake = netD(fake.detach())
+            D_fake, _ = netD(fake.detach())
             D_fake_loss = self.GANloss(D_fake, False, True)
             # loss for discriminator
             D_loss = (D_real_loss + D_fake_loss) * 0.5
             # gradient penalty for wgan-gp
-            if self.opt.gan_mode == 'wgangp':
-                gradient_penalty, gradients = external_function.cal_gradient_penalty(netD, real, fake.detach())
-                D_loss += gradient_penalty
+            # if self.opt.gan_mode == 'wgangp':
+            #     gradient_penalty, gradients = external_function.cal_gradient_penalty(netD, real, fake.detach())
+            #     D_loss += gradient_penalty
+            
 
             D_loss.backward()
 

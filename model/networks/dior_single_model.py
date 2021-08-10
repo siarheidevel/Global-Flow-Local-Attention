@@ -124,7 +124,7 @@ class SoftShapeMask(BaseNetwork):
 class Encoder2(BaseNetwork):
     def __init__(self, input_img_dim=3,dim=64, style_dim = 256, norm='none', activation='LeakyReLU', pad_type ='reflect'):
         super(Encoder2, self).__init__()
-        self.vgg = external_function.VGG19()
+        # self.vgg = external_function.VGG19()
         self.conv0 = Conv2dBlock(input_img_dim, dim, 7, 1, 3, norm=norm,activation=activation, pad_type=pad_type)# 3->64,concat
         dim = dim * 2
         self.conv1 = Conv2dBlock(dim, dim , 4, 2, 1, norm=norm,activation=activation, pad_type=pad_type)# 128->128,concat
