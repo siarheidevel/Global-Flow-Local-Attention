@@ -224,9 +224,11 @@ class VGGLoss(nn.Module):
         G = f.bmm(f_T) / (h * w * ch)
         return G
         
-    def __call__(self, x, y):
+    def __call__(self, x_vgg, y_vgg):
+        # normalize img
+        #TODO
         # Compute features
-        x_vgg, y_vgg = self.vgg(x), self.vgg(y)
+        # x_vgg, y_vgg = self.vgg(x), self.vgg(y)
 
         content_loss = 0.0
         content_loss += self.weights[0] * self.criterion(x_vgg['relu1_1'], y_vgg['relu1_1'])
@@ -244,63 +246,157 @@ class VGGLoss(nn.Module):
 
         return content_loss, style_loss
 
-class StyleLoss(nn.Module):
-    r"""
-    Perceptual loss, VGG-based
-    https://arxiv.org/abs/1603.08155
-    https://github.com/dxyang/StyleTransfer/blob/master/utils.py
-    """
+# class StyleLoss(nn.Module):
+#     r"""
+#     Perceptual loss, VGG-based
+#     https://arxiv.org/abs/1603.08155
+#     https://github.com/dxyang/StyleTransfer/blob/master/utils.py
+#     """
 
-    def __init__(self, vgg):
-        super(StyleLoss, self).__init__()
-        self.criterion = torch.nn.L1Loss()
-        self.vgg = vgg
+#     def __init__(self, vgg):
+#         super(StyleLoss, self).__init__()
+#         self.criterion = torch.nn.L1Loss()
+#         self.vgg = vgg
 
-    def compute_gram(self, x):
-        b, ch, h, w = x.size()
-        f = x.view(b, ch, w * h)
-        f_T = f.transpose(1, 2)
-        G = f.bmm(f_T) / (h * w * ch)
+#     def compute_gram(self, x):
+#         b, ch, h, w = x.size()
+#         f = x.view(b, ch, w * h)
+#         f_T = f.transpose(1, 2)
+#         G = f.bmm(f_T) / (h * w * ch)
 
-        return G
+#         return G
 
-    def __call__(self, x, y):
+#     def __call__(self, x, y):
+#         # Compute features
+#         x_vgg, y_vgg = self.vgg(x), self.vgg(y)
+
+#         # Compute loss
+#         style_loss = 0.0
+#         style_loss += self.criterion(self.compute_gram(x_vgg['relu1_2']), self.compute_gram(y_vgg['relu1_2']))
+#         style_loss += self.criterion(self.compute_gram(x_vgg['relu2_2']), self.compute_gram(y_vgg['relu2_2']))
+#         style_loss += self.criterion(self.compute_gram(x_vgg['relu3_4']), self.compute_gram(y_vgg['relu3_4']))
+#         style_loss += self.criterion(self.compute_gram(x_vgg['relu4_4']), self.compute_gram(y_vgg['relu4_4']))
+
+#         return style_loss
+
+
+
+# class PerceptualLoss(nn.Module):
+#     r"""
+#     Perceptual loss, VGG-based
+#     https://arxiv.org/abs/1603.08155
+#     https://github.com/dxyang/StyleTransfer/blob/master/utils.py
+#     """
+
+#     def __init__(self, weights=[1.0, 1.0, 1.0, 1.0, 1.0]):
+#         super(PerceptualLoss, self).__init__()
+#         self.criterion = torch.nn.L1Loss()
+#         self.weights = weights
+
+#     def __call__(self, x, y):
+#         # Compute features
+#         x_vgg, y_vgg = self.vgg(x), self.vgg(y)
+#         content_loss = 0.0
+#         content_loss += self.weights[0] * self.criterion(x_vgg['relu1_1'], y_vgg['relu1_1'])
+#         content_loss += self.weights[1] * self.criterion(x_vgg['relu2_1'], y_vgg['relu2_1'])
+#         content_loss += self.weights[2] * self.criterion(x_vgg['relu3_1'], y_vgg['relu3_1'])
+#         content_loss += self.weights[3] * self.criterion(x_vgg['relu4_1'], y_vgg['relu4_1'])
+
+#         return content_loss
+
+
+class ContextSimilarityLoss(nn.Module):
+    '''
+    https://github.com/roimehrez/contextualLoss/blob/master/CX/CX_distance.py
+    cosine similarity implementation
+    '''
+    def __init__(self, sigma=0.5, b=1.0):
+        super(ContextSimilarityLoss, self).__init__()
+        self.sigma = sigma
+        self.b = b
+
+    def center_by_T(self, featureI, featureT):
+        # Calculate mean channel vector for feature map.
+        meanT = featureT.mean(0, keepdim=True).mean(2, keepdim=True).mean(3, keepdim=True)
+        return featureI - meanT, featureT - meanT
+
+    def l2_normalize_channelwise(self, features):
+        # Normalize on channel dimension (axis=1)
+        norms = features.norm(p=2, dim=1, keepdim=True)
+        features = features.div(norms)
+        return features
+
+    def patch_decomposition(self, features):
+        N, C, H, W = features.shape
+        assert N == 1
+        P = H * W
+        # NCHW --> 1x1xCxHW --> HWxCx1x1
+        patches = features.view(1, 1, C, P).permute((3, 2, 0, 1))
+        return patches
+
+    def calc_relative_distances(self, raw_dist, axis=1):
+        epsilon = 1e-5
+        div = torch.min(raw_dist, dim=axis, keepdim=True)[0]
+        relative_dist = raw_dist / (div + epsilon)
+        return relative_dist
+
+    def calc_CX(self, dist, axis=1):
+        W = torch.exp((self.b - dist) / self.sigma)
+        W_sum = W.sum(dim=axis, keepdim=True)
+        return W.div(W_sum)
+
+    def feature_loss(self, featureT, featureI):
+        '''
+        :param featureT: target
+        :param featureI: inference
+        :return:
+        '''
+        # NCHW
+        # print(featureI.shape)
+
+        featureI, featureT = self.center_by_T(featureI, featureT)
+
+        featureI = self.l2_normalize_channelwise(featureI)
+        featureT = self.l2_normalize_channelwise(featureT)
+
+        dist = []
+        N = featureT.size()[0]
+        for i in range(N):
+            # NCHW
+            featureT_i = featureT[i, :, :, :].unsqueeze(0)
+            # NCHW
+            featureI_i = featureI[i, :, :, :].unsqueeze(0)
+            featureT_patch = self.patch_decomposition(featureT_i)
+            # Calculate cosine similarity
+            # See the torch document for functional.conv2d
+            dist_i = F.conv2d(featureI_i, featureT_patch)
+            dist.append(dist_i)
+
+        # NCHW
+        dist = torch.cat(dist, dim=0)
+
+        raw_dist = (1. - dist) / 2.
+
+        relative_dist = self.calc_relative_distances(raw_dist)
+
+        CX = self.calc_CX(relative_dist)
+
+        CX = CX.max(dim=3)[0].max(dim=2)[0]
+        CX = CX.mean(1)
+        CX = -torch.log(CX)
+        CX = torch.mean(CX)
+        return CX
+    
+    def __call__(self, x_vgg, y_vgg):
         # Compute features
-        x_vgg, y_vgg = self.vgg(x), self.vgg(y)
-
-        # Compute loss
-        style_loss = 0.0
-        style_loss += self.criterion(self.compute_gram(x_vgg['relu1_2']), self.compute_gram(y_vgg['relu1_2']))
-        style_loss += self.criterion(self.compute_gram(x_vgg['relu2_2']), self.compute_gram(y_vgg['relu2_2']))
-        style_loss += self.criterion(self.compute_gram(x_vgg['relu3_4']), self.compute_gram(y_vgg['relu3_4']))
-        style_loss += self.criterion(self.compute_gram(x_vgg['relu4_4']), self.compute_gram(y_vgg['relu4_4']))
-
-        return style_loss
-
-
-
-class PerceptualLoss(nn.Module):
-    r"""
-    Perceptual loss, VGG-based
-    https://arxiv.org/abs/1603.08155
-    https://github.com/dxyang/StyleTransfer/blob/master/utils.py
-    """
-
-    def __init__(self, weights=[1.0, 1.0, 1.0, 1.0, 1.0]):
-        super(PerceptualLoss, self).__init__()
-        self.criterion = torch.nn.L1Loss()
-        self.weights = weights
-
-    def __call__(self, x, y):
-        # Compute features
-        x_vgg, y_vgg = self.vgg(x), self.vgg(y)
-        content_loss = 0.0
-        content_loss += self.weights[0] * self.criterion(x_vgg['relu1_1'], y_vgg['relu1_1'])
-        content_loss += self.weights[1] * self.criterion(x_vgg['relu2_1'], y_vgg['relu2_1'])
-        content_loss += self.weights[2] * self.criterion(x_vgg['relu3_1'], y_vgg['relu3_1'])
-        content_loss += self.weights[3] * self.criterion(x_vgg['relu4_1'], y_vgg['relu4_1'])
-
-        return content_loss
+        # x_vgg, y_vgg = self.vgg(x), self.vgg(y)
+        # layers = ['relu3_2','relu4_2']
+        layers = ['relu4_2']
+        cx_style_loss = 0
+        for layer in layers:
+            featureT, featureI = x_vgg[layer], y_vgg[layer]
+            cx_style_loss += self.feature_loss(featureT, featureI)
+        return cx_style_loss
 
 
 class PerceptualCorrectness(nn.Module):
@@ -315,11 +411,12 @@ class PerceptualCorrectness(nn.Module):
         self.eps=1e-8 
         self.resample = Resample2d(4, 1, sigma=2)
 
-    def __call__(self, target, source, flow_list, used_layers, mask=None, use_bilinear_sampling=False):
+    def __call__(self, target_vgg, source_vgg, flow_list, used_layers, mask=None, use_bilinear_sampling=False):
         used_layers=sorted(used_layers, reverse=True)
         # self.target=target
         # self.source=source
-        self.target_vgg, self.source_vgg = self.vgg(target), self.vgg(source)
+        # self.target_vgg, self.source_vgg = self.vgg(target), self.vgg(source)
+        self.target_vgg, self.source_vgg = target_vgg, source_vgg
         loss = 0
         for i in range(len(flow_list)):
             loss += self.calculate_loss(flow_list[i], self.layer[used_layers[i]], mask, use_bilinear_sampling)

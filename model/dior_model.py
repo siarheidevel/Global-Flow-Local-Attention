@@ -44,12 +44,13 @@ class Dior(BaseModel):
         parser.add_argument('--lambda_rec', type=float, default=5.0, help='weight for image reconstruction loss')
         parser.add_argument('--lambda_style', type=float, default=500.0, help='weight for the VGG19 style loss')
         parser.add_argument('--lambda_content', type=float, default=0.5, help='weight for the VGG19 content loss')
+        parser.add_argument('--lambda_cx', type=float, default=1, help='weight for the VGG19 context loss')
 
         parser.add_argument('--lambda_gb', type=float, default=2.0, help='weight for adv generation on bones loss')
         parser.add_argument('--lambda_gs', type=float, default=2.0, help='weight for adv generation on segment loss')
         parser.add_argument('--lambda_gi', type=float, default=2.0, help='weight for adv generation on image loss')
         
-        parser.add_argument('--lambda_seg', type=float, default=0.1, help='weight soft mask segmentation')
+        parser.add_argument('--lambda_seg', type=float, default=1, help='weight soft mask segmentation')
 
         parser.add_argument('--with_D_PP', type=int, default=1, help='use D to judge P and P is pair or not')
         parser.add_argument('--with_D_PB', type=int, default=1, help='use D to judge P and B is pair or not')
@@ -67,7 +68,7 @@ class Dior(BaseModel):
 
     def __init__(self, opt):
         BaseModel.__init__(self, opt)
-        self.loss_names = ['correctness_gen', 'regularization_flow', 'l1', 'content_gen', 'style_gen', 'mask',
+        self.loss_names = ['correctness_gen', 'regularization_flow', 'l1', 'content_gen', 'style_gen', 'cx_gen', 'mask',
                             'g_pb', 'g_pp', 'g_ps', 'g_pb_features', 'g_pp_features', 'g_ps_features',
                             'd_pb', 'd_pp', 'd_ps']
         # self.loss_names = ['l1', 'content_gen', 'style_gen', 'mask',
@@ -135,13 +136,15 @@ class Dior(BaseModel):
             # define the loss functions
             # geo loss
             self.Correctness = external_function2.PerceptualCorrectness().to(opt.device)
-            self.Correctness.vgg = self.vgg
+            # self.Correctness.vgg = self.vgg
             self.Regularization = external_function2.MultiAffineRegularizationLoss(kz_dic=opt.kernel_size).to(opt.device)
 
             # content loss:l1 + content + style
             self.L1loss = torch.nn.L1Loss()
             self.Vggloss = external_function2.VGGLoss().to(opt.device)
-            self.Vggloss.vgg = self.vgg
+            # self.Vggloss.vgg = self.vgg
+            self.Cxloss = external_function2.ContextSimilarityLoss(sigma=0.5).to(opt.device)
+            # self.Cxloss.vgg =self.vgg
 
             # self.PerceptualLoss = external_function2.PerceptualLoss().to(opt.device)
             # self.PerceptualLoss.vgg = self.vgg
@@ -233,9 +236,14 @@ class Dior(BaseModel):
 
     def backward_G(self):
         """Calculate training loss for the generator"""
+        # vgg features
+        vgg_features_img_gen =self.vgg(self.img_gen)
+        vgg_features_p1, vgg_features_p2  = self.vgg(self.input_P1), self.vgg(self.input_P2) 
+
         # calculate geometric loss #####
         # Calculate Sampling Correctness Loss
-        loss_correctness_gen = self.Correctness(self.input_P2, self.input_P1, self.flow_fields, self.opt.attn_layer)
+        # loss_correctness_gen = self.Correctness(self.input_P2, self.input_P1, self.flow_fields, self.opt.attn_layer)
+        loss_correctness_gen = self.Correctness(vgg_features_p2, vgg_features_p1, self.flow_fields, self.opt.attn_layer)
         self.loss_correctness_gen = loss_correctness_gen * self.opt.lambda_correct
 
         # Calculate regularization term
@@ -248,9 +256,15 @@ class Dior(BaseModel):
         self.loss_l1 = loss_l1 * self.opt.lambda_rec
 
         # Calculate perceptual loss
-        loss_content_gen, loss_style_gen = self.Vggloss(self.img_gen, self.input_P2)
+        # loss_content_gen, loss_style_gen = self.Vggloss(self.img_gen, self.input_P2)
+        loss_content_gen, loss_style_gen = self.Vggloss(vgg_features_img_gen, vgg_features_p2)
         self.loss_style_gen = loss_style_gen*self.opt.lambda_style
         self.loss_content_gen = loss_content_gen*self.opt.lambda_content
+
+        #calculate contextual loss
+        # cx_loss = self.Cxloss(self.img_gen, self.input_P2)
+        cx_loss = self.Cxloss(vgg_features_img_gen, vgg_features_p2)
+        self.loss_cx_gen = cx_loss *self.opt.lambda_cx
 
         ########## Gan loss #######################
 
