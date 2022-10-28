@@ -10,3 +10,4 @@ dist/
 dataset.rar
 nohup.out
 .nohup.out
+**/__pycache__/

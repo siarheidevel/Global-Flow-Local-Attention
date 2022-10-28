@@ -7,6 +7,8 @@ from PIL import Image, ImageColor, ImageDraw
 from pathlib import Path
 import glob
 
+CUDA_DEVICE= 'cuda:1'
+torch.cuda.set_device(CUDA_DEVICE)
 
 def add_path(path):
     import sys
@@ -149,7 +151,8 @@ lip2reduced_ids = np.array([(lip_dataset_settings['lip']['label'].index(lip_labe
                             reduced_dataset['labels'][red_label]) for (lip_label, red_label) in reduced_dataset['lip2reduced'].items()]).T
 redused_legend = draw_legend(rgb_reduced_palette_colors,[k for k,v in reduced_dataset['labels'].items()],
     (lip_dataset_settings['lip']['input_size'][0],200))
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device(CUDA_DEVICE if torch.cuda.is_available() else "cpu")
+# device=torch.device('cpu')
 human_parsing_model = load_model()
 
 
@@ -229,7 +232,25 @@ def parse_human_file(image_file, clean_bg=False):
     else:
         img = cv2.imread(image_file)
         # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    return parse_human(img)
+    if img.shape[0]>800:
+        img = cv2.resize(img,(int(img.shape[1]*800/img.shape[0]),800), interpolation=cv2.INTER_AREA)
+    res = parse_human(img)
+    # image_file_name = Path(image_file).name
+    # output_dir = Path(image_file).parent
+    # matr_file_name = os.path.join(output_dir, image_file_name)
+    # rendered_file_name = os.path.join(output_dir, image_file_name)
+    # np.save(matr_file_name, res['mask_array'].astype('uint8'))
+    np.savez_compressed(image_file+'.seg', mask = res['mask_array'].astype('uint8'))
+    # loaded = np.load(matr_file_name+'.npz')['mask']
+    # cv2.imwrite(rendered_file_name, cv2.cvtColor(
+    #     rendered, cv2.COLOR_RGB2BGR))
+    cv2.imwrite(image_file+'.seg.render.jpg',cv2.resize(
+                res['rendered'].astype(float)
+                ,None, fx=0.5, fy=0.5,  interpolation=cv2.INTER_AREA)
+                ,[int(cv2.IMWRITE_JPEG_QUALITY), 50])
+    return res
+    # cv2.imwrite(rendered_file_name, res['rendered'])
+
 
 
 def process_image_dir(images_dir, output_dir, from_seq=0):
@@ -240,29 +261,24 @@ def process_image_dir(images_dir, output_dir, from_seq=0):
     image_file_list = glob.glob(images_dir + '/**/*.jpg', recursive=True)
     for index, image_file in enumerate(image_file_list):
         if index<from_seq: continue
-        res = parse_human_file(image_file)
-        image_file_name = Path(image_file).name
         if index % 10 == 0:
             print(f"{index}/{len(image_file_list)}  {image_file}")
-        matr_file_name = os.path.join(output_dir, image_file_name)
-        rendered_file_name = os.path.join(output_dir, image_file_name)
-        # np.save(matr_file_name, res['mask_array'].astype('uint8'))
-        np.savez_compressed(matr_file_name, mask = res['mask_array'].astype('uint8'))
-        # loaded = np.load(matr_file_name+'.npz')['mask']
-        # cv2.imwrite(rendered_file_name, cv2.cvtColor(
-        #     rendered, cv2.COLOR_RGB2BGR))
-        cv2.imwrite(rendered_file_name, res['rendered'])
+        if Path(image_file+'.seg.render.jpg').exists():continue
+        res = parse_human_file(image_file)
+        
+        
+        
 
 
 if __name__ == "__main__":
     # /home/deeplab/datasets/deepfashion/inshop/adgan/data/semantic_merge3/MEN/Denim/id_00000080/01_1_front.npy
-    # parse_human_file(
-    #     '/home/deeplab/datasets/deepfashion/inshop/adgan/data/fashion_resize/train/fashionMENDenimid0000008001_1front.jpg')
+    parse_human_file(
+        '/home/deeplab/datasets/custom_fashion/demo/office_2/20210818_115331.jpg')
     # process_image_dir('/home/deeplab/datasets/clothing-co-parsing/photos',
     #                   '/home/deeplab/devel/my_test_images_out')
     # process_image_dir('/home/deeplab/datasets/deepfashion/inshop/adgan/data/fashion_resize/train',
     #                   '/home/deeplab/datasets/deepfashion/inshop/adgan/data/fashion_resize/train_seg')
-    process_image_dir('/home/deeplab/datasets/deepfashion/inshop/adgan/highres/train',
-                      '/home/deeplab/datasets/deepfashion/inshop/adgan/highres/train_seg2', from_seq=0)
+    # process_image_dir('/home/deeplab/datasets/deepfashion/inshop/adgan/highres/train',
+    #                   '/home/deeplab/datasets/deepfashion/inshop/adgan/highres/train_seg2', from_seq=0)
                       
 

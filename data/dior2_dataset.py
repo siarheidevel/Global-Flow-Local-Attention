@@ -116,7 +116,7 @@ class Dior2Dataset(BaseDataset):
             BP_2_array = BP_1_array
             SP1_seg = np.load(P1_name + '.seg.npz')['mask']            
             # cv2.imwrite('mask.png',DiorDataset.random_ff_mask(*P1_img.shape[:2], MAXVERTEX = 5, MAX_ANGLE = 60)*255)
-            mask = Dior2Dataset.random_ff_mask(*self.opt.refit,MAXVERTEX=12,MAX_ANGLE=60)
+            mask = Dior2Dataset.random_ff_mask(*self.opt.refit,MAXVERTEX=8,MAX_ANGLE=60)
             SP2_seg = SP1_seg
 
             affine_transform_1 = self._get_affine_stransform(P1_img.shape[0],P1_img.shape[1])
@@ -168,12 +168,19 @@ class Dior2Dataset(BaseDataset):
 
         P1 = self.trans(resized_img1)
         P2 = self.trans(resized_img2)
-        BP1 = Dior2Dataset.obtain_bone(BP_1_array, self.opt.refit[0],self.opt.refit[1], affine_transform_1, sigma=6)  
+        BP1 = Dior2Dataset.obtain_bone(BP_1_array, self.opt.refit[0],self.opt.refit[1], affine_transform_1, sigma=6)
+
+        BP1_RGB = self.trans(
+            Dior2Dataset.obtain_bone_rgb(BP_1_array,self.opt.refit[0],self.opt.refit[1],affine_transform_1,radius=3))
         if  BP_2_array is BP_1_array  and  affine_transform_2 is affine_transform_1:
             BP2 = BP1
+            BP2_RGB =BP1_RGB
         else:
             BP2 = Dior2Dataset.obtain_bone(BP_2_array, self.opt.refit[0],self.opt.refit[1], affine_transform_2, sigma=6)
+            BP2_RGB = self.trans(
+                Dior2Dataset.obtain_bone_rgb(BP_2_array, self.opt.refit[0],self.opt.refit[1], affine_transform_2,radius=3))
         
+        # cv2.imwrite('augm_bones1.jpg',BP1_RGB[...,[2,1,0]])
         # cv2.imwrite('augm_orig1.jpg',cv2.cvtColor(P1_img, cv2.COLOR_RGB2BGR))
         # cv2.imwrite('augm_orig2.jpg',cv2.cvtColor(P2_img, cv2.COLOR_RGB2BGR))
         # cv2.imwrite('augm_img1.jpg',cv2.cvtColor(resized_img1, cv2.COLOR_RGB2BGR))
@@ -187,8 +194,10 @@ class Dior2Dataset(BaseDataset):
         # cv2.imwrite('augm_mask.jpg',mask*255)
            
         # print(torch.Tensor(mask).type(torch.uint8).shape)
-        return {'P1': P1, 'BP1': torch.Tensor(BP1), 'SP1': torch.Tensor(SP1).type(torch.bool), 'P2': P2, 'BP2': torch.Tensor(BP2),
-                'M1' : torch.Tensor(mask).type(torch.bool), 'SP2': torch.Tensor(SP2).type(torch.bool),'P1_path': P1_name, 'P2_path': P2_name}
+        return {'P1': P1, 'BP1': torch.Tensor(BP1), 'SP1': torch.Tensor(SP1).type(torch.bool), 
+                'P2': P2, 'BP2': torch.Tensor(BP2), 'SP2': torch.Tensor(SP2).type(torch.bool),
+                'BP1_RGB': torch.Tensor(BP1_RGB), 'BP2_RGB': torch.Tensor(BP2_RGB),
+                'M1' : torch.Tensor(mask).type(torch.bool), 'P1_path': P1_name, 'P2_path': P2_name}
 
 
     def __len__(self):
@@ -236,7 +245,14 @@ class Dior2Dataset(BaseDataset):
     def obtain_bone(array, height:int, width:int,  affine_matrix, sigma=6):
         pose  = pose_utils.cords_to_map(array, (height, width), affine_matrix=affine_matrix, sigma=sigma)
         pose = np.transpose(pose,(2, 0, 1))
-        return pose  
+        return pose 
+
+
+    @staticmethod
+    def obtain_bone_rgb(array, height:int, width:int,  affine_matrix, radius=3):
+        af_c=pose_utils.apply_affine_to_coords(array, (height, width), affine_matrix)
+        rgb_bones = pose_utils.draw_pose_from_cords(af_c,(height, width),radius=radius)[0]
+        return rgb_bones
 
 
     @staticmethod
@@ -302,7 +318,7 @@ class Dior2Dataset(BaseDataset):
             MAX_LENGTH =0.7 * min(image_height,image_width)
         
         if MAX_BRUSH_WIDTH == 0:
-            MAX_BRUSH_WIDTH = 0.05 * min(image_height,image_width)
+            MAX_BRUSH_WIDTH = 0.03 * min(image_height,image_width)
 
         config = {
             'img_shape':(image_height, image_width),

@@ -30,8 +30,8 @@ if __name__ == '__main__':
     # training process
     while(keep_training):
         epoch_start_time = time.time()
-        epoch+=1
-        print('\n Training epoch: %d' % epoch)
+        # epoch+=1
+        # print('\n Training epoch: %d' % epoch)
 
         for i, data in enumerate(dataset):
             iter_start_time = time.time()
@@ -40,12 +40,7 @@ if __name__ == '__main__':
             model.optimize_parameters()
             # visualizer.display_current_results(model.get_current_visuals(), epoch)
             # visualizer.display_current_results(model.get_current_visuals(), epoch)
-            # display images on visdom and save images
-            if total_iteration % opt.display_freq == 0:
-                visualizer.display_current_results(model.get_current_visuals(), epoch)
-                if hasattr(model, 'distribution'):
-                    visualizer.plot_current_distribution(model.get_current_dis())
-
+            
             # print training loss and save logging information to the disk
             if total_iteration % opt.print_freq == 0:
                 losses = model.get_current_errors()
@@ -53,6 +48,13 @@ if __name__ == '__main__':
                 visualizer.print_current_errors(epoch, total_iteration, losses, t)
                 if opt.display_id > 0:
                     visualizer.plot_current_errors(total_iteration, losses)
+                    
+            # display images on visdom and save images
+            if total_iteration % opt.display_freq == 0:
+                visualizer.display_current_results(model.get_current_visuals(), epoch)
+                if hasattr(model, 'distribution'):
+                    visualizer.plot_current_distribution(model.get_current_dis())
+
 
             if total_iteration % opt.eval_iters_freq == 0:
                 model.eval() 
@@ -71,11 +73,17 @@ if __name__ == '__main__':
             if total_iteration % opt.save_iters_freq == 0:
                 print('saving the model of iterations %d' % total_iteration)
                 model.save_networks(total_iteration)
+                epoch+=1
+                print('\n Training epoch: %d' % epoch)
 
             if total_iteration > max_iteration:
                 keep_training = False
                 break
+            
+            if total_iteration % opt.print_freq == 0:
+                lr = model.optimizers[0].param_groups[0]['lr']
+                print('learning rate=%.7f' % lr)
 
-        model.update_learning_rate()
+            model.update_learning_rate()
 
         print('\nEnd training')

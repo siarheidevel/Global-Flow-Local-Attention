@@ -11,9 +11,13 @@ from collections import defaultdict
 import skimage.measure, skimage.transform
 import sys
 
+# LIMB_SEQ = [[1,2], [1,5], [2,3], [3,4], [5,6], [6,7], [1,8], [8,9],
+#            [9,10], [1,11], [11,12], [12,13], [1,0], [0,14], [14,16],
+#            [0,15], [15,17], [2,16], [5,17]]
+
 LIMB_SEQ = [[1,2], [1,5], [2,3], [3,4], [5,6], [6,7], [1,8], [8,9],
            [9,10], [1,11], [11,12], [12,13], [1,0], [0,14], [14,16],
-           [0,15], [15,17], [2,16], [5,17]]
+           [0,15], [15,17]]
 
 COLORS = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], [0, 255, 0],
           [0, 255, 85], [0, 255, 170], [0, 255, 255], [0, 170, 255], [0, 85, 255], [0, 0, 255], [85, 0, 255],
@@ -69,6 +73,23 @@ def cords_to_map(cords, img_size, old_size=None, affine_matrix=None, sigma=6):
         result[..., i] = np.exp(-((yy - point_0) ** 2 + (xx - point_1) ** 2) / (2 * sigma ** 2))
     return result
 
+def apply_affine_to_coords(cords, img_size, affine_matrix,old_size=None,):
+    old_size = img_size if old_size is None else old_size
+    cords = cords.astype(float)
+    cords_out = np.ones_like(cords) * MISSING_VALUE
+    for i, point in enumerate(cords):
+        if point[0] == MISSING_VALUE or point[1] == MISSING_VALUE:
+            continue
+        point[0] = point[0]/old_size[0] * img_size[0]
+        point[1] = point[1]/old_size[1] * img_size[1]
+        point_ =np.dot(affine_matrix, np.matrix([point[1], point[0], 1]).reshape(3,1))
+        point_0 = int(point_[1])
+        point_1 = int(point_[0])
+        cords_out[i] = np.array([point_0,point_1])
+    return cords_out.astype(int)
+
+
+
 
 def draw_pose_from_cords(pose_joints, img_size, radius=2, draw_joints=True):
     colors = np.zeros(shape=img_size + (3, ), dtype=np.uint8)
@@ -81,7 +102,8 @@ def draw_pose_from_cords(pose_joints, img_size, radius=2, draw_joints=True):
             if from_missing or to_missing:
                 continue
             yy, xx, val = line_aa(pose_joints[f][0], pose_joints[f][1], pose_joints[t][0], pose_joints[t][1])
-            colors[yy, xx] = np.expand_dims(val, 1) * 255
+            # colors[yy, xx] = np.expand_dims(val, 1) * 255
+            colors[yy, xx] = ((np.array(COLORS[f])+np.array(COLORS[t]))//2)
             mask[yy, xx] = True
 
     for i, joint in enumerate(pose_joints):

@@ -74,20 +74,25 @@ def prepare_pose_annotation(images_dir: Path):
                 print(pose_file)
             image_file_name = re.search(r'.+/(.+?)\.pose2\.txt', pose_file).group(1)
             image_group_id = Path(pose_file).parent.name
+            if '/deepfashion/' in str(images_dir):
+                #fix for deep fashion group
+                image_group_id +='_' + re.search(r'(\d+)_.+', image_file_name).group(1)
+
             image_file = Path(pose_file).parent / image_file_name
             if not image_file.exists():
                 logging.warning(f' No image {image_file_name} found for pose file {pose_file}')
                 continue
 
-            seg_file = Path(pose_file).parent / (image_file_name + '.seg.npz')
+            # seg_file = Path(pose_file).parent / (image_file_name + '.seg3.render.png')
+            seg_file = Path(pose_file).parent / (image_file_name + '.seg_qanet.render.png')
             if not seg_file.exists():
                 logging.warning(f' No segmentation {seg_file} found for pose file {pose_file}')
                 continue
 
-            seg = np.load(seg_file)['mask']
-            if np.max(seg)>8:
-                logging.warning(f' Wrong segmentation {seg_file} found for pose file {pose_file}')
-                continue
+            # seg = np.load(seg_file)['mask']
+            # if np.max(seg)>8:
+            #     logging.warning(f' Wrong segmentation {seg_file} found for pose file {pose_file}')
+            #     continue
 
             
             with open(pose_file) as f:
@@ -97,6 +102,13 @@ def prepare_pose_annotation(images_dir: Path):
             is_valid_pose = _check_valid_pose(points,
                 must_be_points=[['Rhip', 'Lhip', 'Lsho', 'Rsho'], ['Rhip', 'Lhip', 'Rkne', 'Lkne']],
                 is_only_frontal=True)
+
+            if not is_valid_pose:
+                # add back full figure
+                is_valid_pose = _check_valid_pose(points,
+                    must_be_points=[['Rhip', 'Lhip', 'Lsho', 'Rsho', 'Rkne', 'Lkne', 'nose']],
+                    is_only_frontal=False)
+
             
             if not is_valid_pose:
                 # logging.info(f' No valid pose for pose file {pose_file}')
@@ -129,7 +141,7 @@ def prepare_pose_annotation(images_dir: Path):
     # saving annotation csv
     anno_df=pd.DataFrame(data=pose_annotation_list,
         columns=['image_file', 'image_group', 'keypoints_y', 'keypoints_x', 'img_height', 'img_width', 'gender', 'category'])
-    anno_df.to_csv(images_dir/ 'annotation_index.csv', index=False, sep=';')
+    
     
     # creating permutation pairs/ limit 5 per group
     LIMIT_PER_GROUP_PAIRS = 8
@@ -147,7 +159,8 @@ def prepare_pose_annotation(images_dir: Path):
     pairs_anno_df = pd.DataFrame(data=pairs_list,
         columns=['group', 'from', 'to'])
     logging.info(f'Total pairs {len(pairs_anno_df)}')
-    pairs_anno_df.to_csv(images_dir/ 'annotation_pairs.csv', index=False, sep=';')    
+    anno_df.to_csv(images_dir/ 'annotation_index_qanet.csv', index=False, sep=';')
+    pairs_anno_df.to_csv(images_dir/ 'annotation_pairs_qanet.csv', index=False, sep=';')    
         
 
 def stat_dataset(anno_file:Path):
@@ -165,9 +178,9 @@ if __name__ == "__main__":
     # TODO /home/deeplab/datasets/custom_fashion/demo
     # prepare_pose_annotation(Path('/home/deeplab/datasets/custom_fashion/demo'))
     # prepare_pose_annotation(Path('/home/deeplab/datasets/custom_fashion/data/'))
-    stat_dataset(Path('/home/deeplab/datasets/custom_fashion/data/annotation_index.csv'))
-    # prepare_pose_annotation(Path('/home/deeplab/datasets/deepfashion/diordataset_custom'))
-    stat_dataset(Path('/home/deeplab/datasets/deepfashion/diordataset_custom/annotation_index.csv'))
+    # stat_dataset(Path('/home/deeplab/datasets/custom_fashion/data/annotation_index.csv'))
+    prepare_pose_annotation(Path('/home/deeplab/datasets/deepfashion/diordataset_custom'))
+    stat_dataset(Path('/home/deeplab/datasets/deepfashion/diordataset_custom/annotation_index_qanet.csv'))
 
     
     print('finished')

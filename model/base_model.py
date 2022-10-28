@@ -66,8 +66,8 @@ class BaseModel():
         """Update learning rate"""
         for scheduler in self.schedulers:
             scheduler.step()
-        lr = self.optimizers[0].param_groups[0]['lr']
-        print('learning rate=%.7f' % lr)
+        # lr = self.optimizers[0].param_groups[0]['lr']
+        # print('learning rate=%.7f' % lr)
 
     def get_current_errors(self):
         """Return training loss"""
@@ -75,6 +75,7 @@ class BaseModel():
         for name in self.loss_names:
             if isinstance(name, str):
                 errors_ret[name] = getattr(self, 'loss_' + name).item()
+        errors_ret['lr']=self.optimizers[0].param_groups[0]['lr']
         return errors_ret
 
     def get_current_eval_results(self):
@@ -124,6 +125,11 @@ class BaseModel():
         if value.size(1) == 18: # bone_map
             value = np.transpose(value[0].detach().cpu().numpy(),(1,2,0))
             value = pose_utils.draw_pose_from_map(value)[0]
+            result = value
+        
+        elif value.size(1) == 48: # dense_map
+            value = np.transpose(value[0].detach().cpu().numpy(),(1,2,0))
+            value = 127*np.sum(value, axis=-1)[...,np.newaxis]
             result = value
 
         elif value.size(1) == 21: # bone_map + color image

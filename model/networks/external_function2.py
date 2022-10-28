@@ -6,7 +6,7 @@ from model.networks.resample2d_package.resample2d import Resample2d
 from model.networks.block_extractor.block_extractor   import BlockExtractor
 from model.networks.local_attn_reshape.local_attn_reshape   import LocalAttnReshape
 from model.networks.base_network import BaseNetwork
-from model.networks.base_function import get_nonlinearity_layer, get_norm_layer, coord_conv
+from model.networks.base_function import get_nonlinearity_layer, get_norm_layer, coord_conv, ResBlocks
 
 from util import util
 import numpy as np
@@ -150,16 +150,18 @@ class PatchDiscriminatorWithLayers(BaseNetwork):
     :param activation: activation function 'ReLU, SELU, LeakyReLU, PReLU'
     :param use_spect: use spectral normalization or not
     :param use_coord: use CoordConv or nor
-    :param use_attn: use short+long attention or not
     """
-    def __init__(self, input_nc=3, ndf=64, img_f=512, layers=3, norm='batch', activation='LeakyReLU', use_spect=True,
-                 use_coord=False):
+    def __init__(self, input_nc=3, ndf=64, img_f=512, layers=3, n_res=1, multi_dim_out = False,
+                norm='batch', activation='LeakyReLU', use_spect=True,
+                use_coord=False):
         super(PatchDiscriminatorWithLayers, self).__init__()
         self.layers = layers
+        self.n_res =n_res
+        self.multi_dim_out = multi_dim_out
         norm_layer = get_norm_layer(norm_type=norm)
         nonlinearity = get_nonlinearity_layer(activation_type=activation)
 
-        kwargs = {'kernel_size': 4, 'stride': 2, 'padding': 1, 'bias': False}
+        kwargs = {'kernel_size': 3, 'stride': 2, 'padding': 1, 'bias': False}
 
         sequence = []
         if norm_layer is not None:
@@ -181,11 +183,15 @@ class PatchDiscriminatorWithLayers(BaseNetwork):
                 nonlinearity,
             ]
             setattr(self, 'enc'+str(i),nn.Sequential(*sequence))
+        
+        if self.n_res>0:
+            setattr(self, 'res',ResBlocks(self.n_res,ndf * mult,norm_layer=norm_layer,
+                nonlinearity=nonlinearity,use_spect=use_spect,use_coord=use_coord))
 
         sequence=[]
         mult_prev = mult
         mult = min(2 ** i, img_f // ndf)
-        kwargs = {'kernel_size': 4, 'stride': 1, 'padding': 1, 'bias': False}
+        kwargs = {'kernel_size': 3, 'stride': 1, 'padding': 1, 'bias': False}
         if norm_layer is not None:
             sequence +=[norm_layer(ndf * mult_prev)]
         sequence += [
@@ -193,15 +199,18 @@ class PatchDiscriminatorWithLayers(BaseNetwork):
             nonlinearity,
             coord_conv(ndf * mult, 1, use_spect, use_coord, **kwargs),
         ]
-        self.model = nn.Sequential(*sequence)
+        self.final_model = nn.Sequential(*sequence)
 
     def forward(self, x):
         layers = []
         for i in range(self.layers):
             x = getattr(self, 'enc'+str(i))(x)
             layers.append(x)
-        out = self.model(x)
-        return out, layers   
+        if self.n_res > 0:
+            x = getattr(self, 'res')(x)
+        if not self.multi_dim_out:
+            x = self.model(x)
+        return x, layers
 
 
 class VGGLoss(nn.Module):
@@ -235,6 +244,41 @@ class VGGLoss(nn.Module):
         content_loss += self.weights[1] * self.criterion(x_vgg['relu2_1'], y_vgg['relu2_1'])
         content_loss += self.weights[2] * self.criterion(x_vgg['relu3_1'], y_vgg['relu3_1'])
         content_loss += self.weights[3] * self.criterion(x_vgg['relu4_1'], y_vgg['relu4_1'])
+        content_loss += self.weights[3] * self.criterion(x_vgg['relu5_1'], y_vgg['relu5_1'])
+
+        # Compute loss
+        style_loss = 0.0
+        style_loss += self.criterion(self.compute_gram(x_vgg['relu1_2']), self.compute_gram(y_vgg['relu1_2']))
+        style_loss += self.criterion(self.compute_gram(x_vgg['relu2_2']), self.compute_gram(y_vgg['relu2_2']))
+        style_loss += self.criterion(self.compute_gram(x_vgg['relu3_4']), self.compute_gram(y_vgg['relu3_4']))
+        style_loss += self.criterion(self.compute_gram(x_vgg['relu4_4']), self.compute_gram(y_vgg['relu4_4']))
+        style_loss += self.criterion(self.compute_gram(x_vgg['relu5_2']), self.compute_gram(y_vgg['relu5_2']))
+
+
+        return content_loss, style_loss
+
+class StyleLoss(nn.Module):
+    r"""
+    Perceptual loss, VGG-based
+    https://arxiv.org/abs/1603.08155
+    https://github.com/dxyang/StyleTransfer/blob/master/utils.py
+    """
+
+    def __init__(self):
+        super(StyleLoss, self).__init__()
+        self.criterion = torch.nn.L1Loss()
+
+    def compute_gram(self, x):
+        b, ch, h, w = x.size()
+        f = x.view(b, ch, w * h)
+        f_T = f.transpose(1, 2)
+        G = f.bmm(f_T) / (h * w * ch)
+
+        return G
+
+    def __call__(self, x_vgg, y_vgg):
+        # Compute features
+        # x_vgg, y_vgg = self.vgg(x), self.vgg(y)
 
         # Compute loss
         style_loss = 0.0
@@ -243,66 +287,32 @@ class VGGLoss(nn.Module):
         style_loss += self.criterion(self.compute_gram(x_vgg['relu3_4']), self.compute_gram(y_vgg['relu3_4']))
         style_loss += self.criterion(self.compute_gram(x_vgg['relu4_4']), self.compute_gram(y_vgg['relu4_4']))
 
-
-        return content_loss, style_loss
-
-# class StyleLoss(nn.Module):
-#     r"""
-#     Perceptual loss, VGG-based
-#     https://arxiv.org/abs/1603.08155
-#     https://github.com/dxyang/StyleTransfer/blob/master/utils.py
-#     """
-
-#     def __init__(self, vgg):
-#         super(StyleLoss, self).__init__()
-#         self.criterion = torch.nn.L1Loss()
-#         self.vgg = vgg
-
-#     def compute_gram(self, x):
-#         b, ch, h, w = x.size()
-#         f = x.view(b, ch, w * h)
-#         f_T = f.transpose(1, 2)
-#         G = f.bmm(f_T) / (h * w * ch)
-
-#         return G
-
-#     def __call__(self, x, y):
-#         # Compute features
-#         x_vgg, y_vgg = self.vgg(x), self.vgg(y)
-
-#         # Compute loss
-#         style_loss = 0.0
-#         style_loss += self.criterion(self.compute_gram(x_vgg['relu1_2']), self.compute_gram(y_vgg['relu1_2']))
-#         style_loss += self.criterion(self.compute_gram(x_vgg['relu2_2']), self.compute_gram(y_vgg['relu2_2']))
-#         style_loss += self.criterion(self.compute_gram(x_vgg['relu3_4']), self.compute_gram(y_vgg['relu3_4']))
-#         style_loss += self.criterion(self.compute_gram(x_vgg['relu4_4']), self.compute_gram(y_vgg['relu4_4']))
-
-#         return style_loss
+        return style_loss
 
 
 
-# class PerceptualLoss(nn.Module):
-#     r"""
-#     Perceptual loss, VGG-based
-#     https://arxiv.org/abs/1603.08155
-#     https://github.com/dxyang/StyleTransfer/blob/master/utils.py
-#     """
+class PerceptualLoss(nn.Module):
+    r"""
+    Perceptual loss, VGG-based
+    https://arxiv.org/abs/1603.08155
+    https://github.com/dxyang/StyleTransfer/blob/master/utils.py
+    """
 
-#     def __init__(self, weights=[1.0, 1.0, 1.0, 1.0, 1.0]):
-#         super(PerceptualLoss, self).__init__()
-#         self.criterion = torch.nn.L1Loss()
-#         self.weights = weights
+    def __init__(self, weights=[1.0, 1.0, 1.0, 1.0, 1.0]):
+        super(PerceptualLoss, self).__init__()
+        self.criterion = torch.nn.L1Loss()
+        self.weights = weights
 
-#     def __call__(self, x, y):
-#         # Compute features
-#         x_vgg, y_vgg = self.vgg(x), self.vgg(y)
-#         content_loss = 0.0
-#         content_loss += self.weights[0] * self.criterion(x_vgg['relu1_1'], y_vgg['relu1_1'])
-#         content_loss += self.weights[1] * self.criterion(x_vgg['relu2_1'], y_vgg['relu2_1'])
-#         content_loss += self.weights[2] * self.criterion(x_vgg['relu3_1'], y_vgg['relu3_1'])
-#         content_loss += self.weights[3] * self.criterion(x_vgg['relu4_1'], y_vgg['relu4_1'])
+    def __call__(self,  x_vgg, y_vgg):
+        # Compute features
+        # x_vgg, y_vgg = self.vgg(x), self.vgg(y)
+        content_loss = 0.0
+        content_loss += self.weights[0] * self.criterion(x_vgg['relu1_1'], y_vgg['relu1_1'])
+        content_loss += self.weights[1] * self.criterion(x_vgg['relu2_1'], y_vgg['relu2_1'])
+        content_loss += self.weights[2] * self.criterion(x_vgg['relu3_1'], y_vgg['relu3_1'])
+        content_loss += self.weights[3] * self.criterion(x_vgg['relu4_1'], y_vgg['relu4_1'])
 
-#         return content_loss
+        return content_loss
 
 
 class ContextSimilarityLoss(nn.Module):
@@ -387,14 +397,19 @@ class ContextSimilarityLoss(nn.Module):
         CX = torch.mean(CX)
         return CX
     
-    def __call__(self, x_vgg, y_vgg):
+    def __call__(self, x_vgg, y_vgg, layers = ['relu3_2','relu4_2','relu5_2']):
         # Compute features
         # x_vgg, y_vgg = self.vgg(x), self.vgg(y)
-        # layers = ['relu3_2','relu4_2']
-        layers = ['relu4_2']
+        
+        # layers = ['relu4_2']
         cx_style_loss = 0
         for layer in layers:
             featureT, featureI = x_vgg[layer], y_vgg[layer]
+            if 'relu2_2'==layer:
+                # featureI = featureI[:,:,::2,::2]
+                # featureT = featureT[:,:,::2,::2]
+                featureI = nn.AvgPool2d(2)(featureI)
+                featureT = nn.AvgPool2d(2)(featureT)
             cx_style_loss += self.feature_loss(featureT, featureI)
         return cx_style_loss
 
@@ -404,7 +419,7 @@ class PerceptualCorrectness(nn.Module):
 
     """
 
-    def __init__(self, layer=['relu1_1','relu2_1','relu3_1','relu4_1']):
+    def __init__(self, layer=['relu1_1','relu2_1','relu3_1','relu4_1','relu5_1']):
         super(PerceptualCorrectness, self).__init__()
         # self.vgg= vgg
         self.layer = layer  
@@ -503,6 +518,8 @@ class PerceptualCorrectness(nn.Module):
 class VGG19Limited(torch.nn.Module):
     def __init__(self, pretrained_path = None):
         super(VGG19Limited, self).__init__()
+        self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+        self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
         if pretrained_path is not None:
             vgg19 = models.vgg19(pretrained=False)
             vgg19.load_state_dict(torch.load(pretrained_path)) 
@@ -525,8 +542,8 @@ class VGG19Limited(torch.nn.Module):
         self.relu4_3 = torch.nn.Sequential()
         self.relu4_4 = torch.nn.Sequential()
 
-        # self.relu5_1 = torch.nn.Sequential()
-        # self.relu5_2 = torch.nn.Sequential()
+        self.relu5_1 = torch.nn.Sequential()
+        self.relu5_2 = torch.nn.Sequential()
         # self.relu5_3 = torch.nn.Sequential()
         # self.relu5_4 = torch.nn.Sequential()
 
@@ -566,11 +583,11 @@ class VGG19Limited(torch.nn.Module):
         for x in range(25, 27):
             self.relu4_4.add_module(str(x), features[x])
 
-        # for x in range(27, 30):
-        #     self.relu5_1.add_module(str(x), features[x])
+        for x in range(27, 30):
+            self.relu5_1.add_module(str(x), features[x])
 
-        # for x in range(30, 32):
-        #     self.relu5_2.add_module(str(x), features[x])
+        for x in range(30, 32):
+            self.relu5_2.add_module(str(x), features[x])
 
         # for x in range(32, 34):
         #     self.relu5_3.add_module(str(x), features[x])
@@ -581,50 +598,95 @@ class VGG19Limited(torch.nn.Module):
         # don't need the gradients, just want the features
         for param in self.parameters():
             param.requires_grad = False
+        self.eval()
         
-
-
-    def forward(self, x):
+    def optimized_forward(self, x, max_layer = 'relu5_2'):
+        result = {}
         relu1_1 = self.relu1_1(x)
+        result['relu1_1']=relu1_1
+        if max_layer in result.keys(): return result
+
         relu1_2 = self.relu1_2(relu1_1)
+        result['relu1_2']=relu1_2
+        if max_layer in result.keys(): return result
 
         relu2_1 = self.relu2_1(relu1_2)
+        result['relu2_1']=relu2_1
+        if max_layer in result.keys(): return result
+
         relu2_2 = self.relu2_2(relu2_1)
+        result['relu2_2']=relu2_2
+        if max_layer in result.keys(): return result
 
         relu3_1 = self.relu3_1(relu2_2)
+        result['relu3_1']=relu3_1
+        if max_layer in result.keys(): return result
+
         relu3_2 = self.relu3_2(relu3_1)
+        result['relu3_2']=relu3_2
+        if max_layer in result.keys(): return result
+
         relu3_3 = self.relu3_3(relu3_2)
+        result['relu3_3']=relu3_3
+        if max_layer in result.keys(): return result
+
         relu3_4 = self.relu3_4(relu3_3)
+        result['relu3_4']=relu3_4
+        if max_layer in result.keys(): return result
 
         relu4_1 = self.relu4_1(relu3_4)
-        relu4_2 = self.relu4_2(relu4_1)
-        relu4_3 = self.relu4_3(relu4_2)
-        relu4_4 = self.relu4_4(relu4_3)
+        result['relu4_1']=relu4_1
+        if max_layer in result.keys(): return result
 
-        # relu5_1 = self.relu5_1(relu4_4)
-        # relu5_2 = self.relu5_2(relu5_1)
-        # relu5_3 = self.relu5_3(relu5_2)
-        # relu5_4 = self.relu5_4(relu5_3)
+        relu4_2 = self.relu4_2(relu4_1)
+        result['relu4_2']=relu4_2
+        if max_layer in result.keys(): return result
+
+        relu4_3 = self.relu4_3(relu4_2)
+        result['relu4_3']=relu4_3
+        if max_layer in result.keys(): return result
+
+        relu4_4 = self.relu4_4(relu4_3)
+        result['relu4_4']=relu4_4
+        if max_layer in result.keys(): return result
+
+        relu5_1 = self.relu5_1(relu4_4)
+        result['relu5_1']=relu5_1
+        if max_layer in result.keys(): return result
+
+        relu5_2 = self.relu5_2(relu5_1)
+        result['relu5_2']=relu5_2
+        return result
+
+    def forward(self, x, max_layer = 'relu5_2'):
+        #change stats to vgg
+        # mean = torch.FloatTensor([0.485, 0.456, 0.406]).to(x.device)[None,:,None,None]
+        # std = torch.FloatTensor([0.229, 0.224, 0.225]).to(x.device)[None,:,None,None]
+
+        x = (x + 1)/2 # [-1, 1] => [0, 1]
+        x = (x - self.mean)/self.std
+
+        res = self.optimized_forward(x,max_layer)
 
         out = {
-            'relu1_1': relu1_1,
-            'relu1_2': relu1_2,
+            'relu1_1': res.get('relu1_1'),
+            'relu1_2': res.get('relu1_2'),
 
-            'relu2_1': relu2_1,
-            'relu2_2': relu2_2,
+            'relu2_1': res.get('relu2_1'),
+            'relu2_2': res.get('relu2_2'),
 
-            'relu3_1': relu3_1,
-            'relu3_2': relu3_2,
-            'relu3_3': relu3_3,
-            'relu3_4': relu3_4,
+            'relu3_1': res.get('relu3_1'),
+            'relu3_2': res.get('relu3_2'),
+            'relu3_3': res.get('relu3_3'),
+            'relu3_4': res.get('relu3_4'),
 
-            'relu4_1': relu4_1,
-            'relu4_2': relu4_2,
-            'relu4_3': relu4_3,
-            'relu4_4': relu4_4,
+            'relu4_1': res.get('relu4_1'),
+            'relu4_2': res.get('relu4_2'),
+            'relu4_3': res.get('relu4_3'),
+            'relu4_4': res.get('relu4_4'),
 
-            # 'relu5_1': relu5_1,
-            # 'relu5_2': relu5_2,
+            'relu5_1': res.get('relu5_1'),
+            'relu5_2': res.get('relu5_2'),
             # 'relu5_3': relu5_3,
             # 'relu5_4': relu5_4,
         }
